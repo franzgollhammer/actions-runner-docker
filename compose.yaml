@@ -1,0 +1,38 @@
+# Self-hosted GitHub Actions runner. Configure it in .env (see .env.example).
+#
+#   docker compose up -d --build              start one runner
+#   docker compose up -d --scale runner=3     run three of them
+#   docker compose logs -f                    watch registration and jobs
+#   docker compose down                       stop and deregister
+#
+# One set of runners per repository or organization:
+#   docker compose -p ucsl --env-file ucsl.env up -d --build
+services:
+  runner:
+    build:
+      context: .
+      args:
+        EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
+    restart: unless-stopped
+    # Time to stop the runner and deregister it (docker stop waits 10s by default).
+    stop_grace_period: 1m
+    cpus: ${RUNNER_CPUS:-2}
+    mem_limit: ${RUNNER_MEMORY:-4g}
+    environment:
+      GITHUB_URL: ${GITHUB_URL:?set GITHUB_URL in .env}
+      GITHUB_API_URL: ${GITHUB_API_URL:-}
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_NAME: ${RUNNER_NAME:-}
+      RUNNER_NAME_PREFIX: ${RUNNER_NAME_PREFIX:-docker}
+      RUNNER_LABELS: ${RUNNER_LABELS:-}
+      RUNNER_GROUP: ${RUNNER_GROUP:-}
+      RUNNER_WORKDIR: ${RUNNER_WORKDIR:-_work}
+      EPHEMERAL: ${EPHEMERAL:-true}
+      NO_DEFAULT_LABELS: ${NO_DEFAULT_LABELS:-false}
+      DISABLE_AUTO_UPDATE: ${DISABLE_AUTO_UPDATE:-false}
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
