@@ -1,0 +1,12 @@
+# The base image pins the runner version. A current image spares the runner its
+# self-update on start, and with DISABLE_AUTO_UPDATE=true it is the only update.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

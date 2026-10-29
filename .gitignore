@@ -1,0 +1,5 @@
+# Runner configuration with tokens. Keep one file per runner set, e.g. ucsl.env.
+.env
+*.env
+!.env.example
+secrets/

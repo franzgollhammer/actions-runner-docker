@@ -1,0 +1,21 @@
+# Opt-in: lets jobs use the host's Docker daemon (docker build/run, service
+# containers, container jobs) and adds the label "docker". Whoever can run a
+# workflow on this runner gets root on the host. Read "Docker in jobs" in the
+# README first.
+#
+#   docker compose -f compose.yaml -f compose.docker.yml up -d --build
+services:
+  runner:
+    group_add:
+      - ${DOCKER_GID:?set DOCKER_GID to the group id of /var/run/docker.sock}
+    # Service containers publish their ports on the host, not in this container.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      RUNNER_LABELS: ${RUNNER_LABELS:+${RUNNER_LABELS},}docker
+      # The daemon resolves bind mounts on the host, so the work directory has
+      # to exist at the same path on the host and in the container.
+      RUNNER_WORKDIR: ${RUNNER_DOCKER_WORKDIR:-/var/tmp/actions-runner}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${RUNNER_DOCKER_WORKDIR:-/var/tmp/actions-runner}:${RUNNER_DOCKER_WORKDIR:-/var/tmp/actions-runner}
