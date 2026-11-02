@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Stands in for curl in front of the GitHub API: logs the URL and where the
+# token came from, and answers like GitHub: 401 for the token "invalid", 503 for
+# "unavailable", a fresh token otherwise. Appends the status code as -w asks.
+url=${*: -1}
+header=
+if [[ " $* " == *Bearer* ]]; then
+  auth=argv
+elif [[ " $* " == *" -H @- "* ]]; then
+  header=$(cat)
+  if [[ $header == "Authorization: Bearer "* ]]; then auth=stdin; else auth=missing; fi
+else
+  auth=missing
+fi
+token=${header#Authorization: Bearer }
+echo "curl: $url (auth: $auth, token ${#token} chars)" >&2
+case $token in
+  invalid) body='{"message":"Bad credentials"}' code=401 ;;
+  unavailable) body='{"message":"Service unavailable"}' code=503 ;;
+  *) body='{"token":"t"}' code=201 ;;
+esac
+printf '%s' "$body"
+[[ " $* " == *" -w "* ]] && printf '\n%s' "$code"
+exit 0

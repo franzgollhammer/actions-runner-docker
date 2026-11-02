@@ -1,0 +1,26 @@
+# Opt-in: lets jobs use the host's Docker daemon (docker build/run, service
+# containers, Docker container actions; not `container:` jobs). Whoever can run
+# a workflow on this runner gets root on the host. Read "Docker in jobs" in the
+# README first.
+#
+# Switch a runner set to it in its env file, which also works for the systemd unit:
+#   COMPOSE_FILE=compose.yaml:compose.docker.yml
+services:
+  runner:
+    group_add:
+      - ${DOCKER_GID:?set DOCKER_GID to the group id of /var/run/docker.sock}
+    # Service containers publish their ports on the host, not in this container.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      # Only its own labels, not even self-hosted/Linux/X64, so no job lands
+      # here unless it asks for these runners by name (runs-on: docker).
+      RUNNER_LABELS: ${RUNNER_DOCKER_LABELS:-docker}
+      NO_DEFAULT_LABELS: "true"
+      # The daemon resolves bind mounts on the host, so the work directory has
+      # to exist at the same path on the host and in the container. One per
+      # compose project keeps runner sets out of each other's checkouts.
+      RUNNER_WORKDIR: ${RUNNER_DOCKER_WORKDIR:-/var/lib/actions-runner/${COMPOSE_PROJECT_NAME}}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${RUNNER_DOCKER_WORKDIR:-/var/lib/actions-runner/${COMPOSE_PROJECT_NAME}}:${RUNNER_DOCKER_WORKDIR:-/var/lib/actions-runner/${COMPOSE_PROJECT_NAME}}

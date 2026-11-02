@@ -1,0 +1,7 @@
+# Runner configuration with tokens. Keep one file per runner set, e.g. ucsl.env.
+.env
+*.env
+!.env.example
+secrets/
+# Local additions such as a token file mount.
+compose.override.yaml
