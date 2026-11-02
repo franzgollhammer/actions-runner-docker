@@ -318,3 +318,7 @@ adds three calls to the real API with made-up tokens. `tests/systemd.sh` runs th
 unit's own commands in a temporary copy of the checkout. The scripts need bash 4.4
 or newer and `timeout` (macOS: `brew install bash coreutils`). CI runs all of them,
 plus ShellCheck, Hadolint and `systemd-analyze verify`, on every pull request.
+
+## License
+
+[MIT](LICENSE).
