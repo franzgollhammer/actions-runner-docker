@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Technischer Bericht über den vollständigen Lebenszyklus der Docker-basierten GitHub-Actions-Runner in actions-runner-docker.">
+  <title>Docker-Runner verstehen · actions-runner-docker</title>
+  <style>
+    :root {
+      --page: #f4f5f3;
+      --paper: #fdfdfb;
+      --ink: #202d35;
+      --muted: #53616a;
+      --accent: #245b74;
+      --visited: #655279;
+      --line: #d4dcde;
+      --soft: #eaf0f2;
+      --code: #edf0ed;
+      --warning-bg: #f9f0df;
+      --warning-ink: #664715;
+      --focus: #1d617e;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-10: 40px;
+      --space-12: 48px;
+      --space-16: 64px;
+      --text-sm: 0.875rem;
+      --text-base: 1rem;
+      --text-body: 1.125rem;
+      --text-lead: 1.25rem;
+      --text-h3: 1.5rem;
+      --text-h2: 1.875rem;
+      --text-title: 3.5rem;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-padding-block-start: var(--space-8); }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 400 var(--text-body)/1.65 var(--font);
+      overflow-wrap: anywhere;
+    }
+    ::selection { background: #ccdde4; color: var(--ink); }
+    a { color: var(--accent); text-underline-offset: var(--space-1); }
+    a:visited { color: var(--visited); }
+    a:active { color: var(--ink); }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: var(--space-1); }
+    @media (hover: hover) {
+      a:hover { color: var(--ink); text-decoration-thickness: 2px; }
+    }
+    h1, h2, h3 { font-weight: 600; line-height: 1.2; text-wrap: balance; }
+    h1 { margin: var(--space-6) 0; font-size: var(--text-title); letter-spacing: -0.025em; }
+    h2 { margin: 0 0 var(--space-6); font-size: var(--text-h2); letter-spacing: -0.015em; }
+    h3 { margin: var(--space-10) 0 var(--space-4); font-size: var(--text-h3); }
+    p { margin: 0 0 var(--space-6); max-inline-size: 70ch; text-wrap: pretty; }
+    strong, b { font-weight: 600; }
+    ul, ol { margin-block: 0 var(--space-6); padding-inline-start: var(--space-6); }
+    li + li { margin-block-start: var(--space-2); }
+    li p { margin-block-end: var(--space-3); }
+    code, pre { font-family: var(--mono); }
+    code { font-size: 0.875em; background: var(--code); padding: 2px var(--space-1); border-radius: 2px; }
+    pre {
+      margin: var(--space-6) 0;
+      padding: var(--space-6);
+      background: var(--code);
+      font-size: var(--text-sm);
+      line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      tab-size: 2;
+    }
+    pre code { padding: 0; font-size: inherit; background: transparent; border-radius: 0; }
+    .shell-label { margin-block-end: calc(-1 * var(--space-4)); color: var(--muted); font-size: var(--text-sm); }
+    .skip-link {
+      position: absolute;
+      inset-block-start: var(--space-4);
+      inset-inline-start: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      background: var(--paper);
+      transform: translateY(-200%);
+      z-index: 2;
+    }
+    .skip-link:focus { transform: translateY(0); }
+    .layout {
+      display: grid;
+      grid-template-columns: 224px minmax(0, 1fr);
+      max-inline-size: 1264px;
+      margin-inline: auto;
+      min-block-size: 100svh;
+    }
+    .sidebar { padding: var(--space-12) var(--space-6) var(--space-12) var(--space-8); min-inline-size: 0; }
+    .sidebar-inner { position: sticky; inset-block-start: var(--space-8); }
+    .project { margin-block-end: var(--space-8); font-size: var(--text-sm); line-height: 1.5; }
+    .project strong { display: block; }
+    .project span { color: var(--muted); }
+    .toc-title { margin: 0 0 var(--space-3); font-size: var(--text-base); }
+    .toc ol { list-style: none; margin: 0; padding: 0; }
+    .toc li + li { margin: 0; }
+    .toc a {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-3);
+      min-block-size: 44px;
+      padding-block: var(--space-2);
+      font-size: var(--text-sm);
+      line-height: 1.5;
+      text-decoration: none;
+    }
+    .toc a span { flex: 0 0 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .toc a:target { text-decoration: underline; }
+    .sidebar-note { margin-block-start: var(--space-8); color: var(--muted); font-size: var(--text-sm); }
+    main { min-inline-size: 0; padding: var(--space-16); background: var(--paper); }
+    .meta { color: var(--muted); font-size: var(--text-sm); }
+    .meta code { font-size: inherit; }
+    .lead { font-size: var(--text-lead); line-height: 1.6; }
+    .scope { color: var(--muted); font-size: var(--text-base); }
+    section { margin-block-start: var(--space-16); padding-block-start: var(--space-10); border-block-start: 1px solid var(--line); scroll-margin-block-start: var(--space-8); }
+    .section-no { display: inline-block; margin-inline-end: var(--space-3); color: var(--accent); font-size: var(--text-body); vertical-align: baseline; font-variant-numeric: tabular-nums; }
+    .note { margin-block: var(--space-8); padding: var(--space-6); background: var(--soft); }
+    .note p:last-child { margin-block-end: 0; }
+    .warning { color: var(--warning-ink); background: var(--warning-bg); }
+    .warning code { background: transparent; }
+    .note-title { margin-block-end: var(--space-2); font-weight: 600; }
+    table { inline-size: 100%; border-collapse: collapse; table-layout: fixed; margin-block: var(--space-6) var(--space-8); font-size: var(--text-base); line-height: 1.5; }
+    caption { margin-block-end: var(--space-3); text-align: start; font-weight: 600; }
+    th, td { padding: var(--space-4) var(--space-3); text-align: start; vertical-align: top; border-block-end: 1px solid var(--line); }
+    th { font-weight: 600; background: var(--soft); }
+    td:first-child { font-weight: 500; }
+    .source-line { color: var(--muted); font-size: var(--text-sm); }
+    figure { margin: var(--space-8) 0; }
+    figcaption { margin-block-start: var(--space-4); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
+    .architecture { padding: var(--space-6); background: var(--soft); }
+    .diagram-node { padding: var(--space-4) var(--space-6); background: var(--paper); }
+    .diagram-node strong, .diagram-node span { display: block; }
+    .diagram-node span { margin-block-start: var(--space-1); font-size: var(--text-base); }
+    .connection { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-6); color: var(--accent); font-size: var(--text-sm); }
+    .connection .arrow { font-size: var(--text-h3); }
+    .host { padding: var(--space-6); border: 1px dashed var(--accent); }
+    .host-label { margin-block-end: var(--space-4); font-size: var(--text-base); font-weight: 600; }
+    .host .connection { padding-inline: var(--space-4); }
+    .flow { list-style: none; margin: 0; padding: 0; counter-reset: phase; }
+    .flow li { position: relative; padding: var(--space-4) 0 var(--space-4) var(--space-12); margin: 0; border-block-end: 1px solid var(--line); counter-increment: phase; }
+    .flow li::before { content: counter(phase, decimal-leading-zero); position: absolute; inset-inline-start: 0; inset-block-start: var(--space-4); font-size: var(--text-sm); color: var(--accent); font-variant-numeric: tabular-nums; }
+    .flow strong { display: block; }
+    .flow span { display: block; margin-block-start: var(--space-1); font-size: var(--text-base); }
+    .source-list { padding-inline-start: var(--space-6); }
+    .source-list li { padding-block: var(--space-2); }
+    .source-list a { display: inline-block; min-block-size: 24px; }
+    footer { margin-block-start: var(--space-16); padding-block-start: var(--space-8); border-block-start: 1px solid var(--line); color: var(--muted); font-size: var(--text-sm); }
+    footer a { display: inline-block; min-block-size: 44px; padding-block: var(--space-2); }
+
+    @media (max-width: 1100px) {
+      main { padding: var(--space-12) var(--space-8); }
+      h1 { font-size: 3rem; }
+    }
+    @media (max-width: 800px) {
+      .layout { display: block; }
+      .sidebar { padding: var(--space-6); }
+      .sidebar-inner { position: static; }
+      .project { margin-block-end: var(--space-4); }
+      .toc ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-6); }
+      .sidebar-note { display: none; }
+      main { padding: var(--space-10) var(--space-6); }
+    }
+    @media (max-width: 480px) {
+      body { font-size: var(--text-base); }
+      h1 { font-size: 2.5rem; }
+      h2 { font-size: 1.5rem; }
+      h3 { font-size: var(--text-lead); }
+      .lead { font-size: var(--text-body); }
+      .sidebar { padding: var(--space-6) var(--space-4); }
+      .toc ol { column-gap: var(--space-4); }
+      main { padding: var(--space-8) var(--space-4); }
+      section { margin-block-start: var(--space-12); padding-block-start: var(--space-8); }
+      pre, .note, .architecture, .host, .diagram-node { padding: var(--space-4); }
+      .connection { padding: var(--space-3) 0; }
+      th, td { padding: var(--space-3) var(--space-2); font-size: var(--text-sm); }
+      .section-no { font-size: var(--text-base); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    @page { size: A4; margin: 18mm; }
+    @media print {
+      body { color: #202d35; background: white; font-size: 10pt; line-height: 1.5; }
+      .layout { display: block; max-inline-size: none; }
+      .sidebar, .skip-link, .back-top { display: none; }
+      main { padding: 0; background: white; }
+      h1 { font-size: 30pt; }
+      h2 { font-size: 18pt; break-after: avoid; }
+      h3 { font-size: 13pt; break-after: avoid; }
+      section { margin-block-start: 24pt; padding-block-start: 16pt; }
+      p { max-inline-size: 75ch; orphans: 3; widows: 3; }
+      pre { padding: 12pt; font-size: 8pt; }
+      table { font-size: 9pt; }
+      thead { display: table-header-group; }
+      tr, .note, .architecture, .flow li { break-inside: avoid; }
+      .meta, .scope, .source-line, figcaption, footer { font-size: 9pt; }
+      a, a:visited { color: inherit; }
+      .source-list a[href^="https:"]::after { content: " (" attr(href) ")"; font-size: 8pt; overflow-wrap: anywhere; }
+      footer { margin-block-start: 24pt; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#bericht">Zum Bericht springen</a>
+  <div class="layout" id="anfang">
+    <aside class="sidebar" aria-label="Berichtsnavigation">
+      <div class="sidebar-inner">
+        <p class="project"><strong>actions-runner-docker</strong><span>Architektur und Betrieb</span></p>
+        <nav class="toc" aria-labelledby="toc-title">
+          <h2 class="toc-title" id="toc-title">Inhalt</h2>
+          <ol>
+            <li><a href="#ueberblick"><span>01</span>Das System</a></li>
+            <li><a href="#image"><span>02</span>Image und Start</a></li>
+            <li><a href="#registrierung"><span>03</span>Registrierung</a></li>
+            <li><a href="#jobs"><span>04</span>Job-Ausführung</a></li>
+            <li><a href="#lebenszyklus"><span>05</span>Job-Ende und Neustart</a></li>
+            <li><a href="#docker"><span>06</span>Docker in Jobs</a></li>
+            <li><a href="#grenzen"><span>07</span>Isolation und Limits</a></li>
+            <li><a href="#betrieb"><span>08</span>Skalierung und Betrieb</a></li>
+            <li><a href="#konfiguration"><span>09</span>Konfiguration</a></li>
+            <li><a href="#quellen"><span>10</span>Quellen und Prüfung</a></li>
+          </ol>
+        </nav>
+        <p class="sidebar-note">Eigenständiger HTML-Bericht.<br>Ohne externe Ressourcen lesbar.<br>Für Bildschirm und Druck.</p>
+      </div>
+    </aside>
+
+    <main id="bericht" tabindex="-1">
+      <header>
+        <p class="meta">Technischer Bericht · <time datetime="2026-11-02">2. November 2026</time></p>
+        <h1>Docker-Runner verstehen.</h1>
+        <p class="lead">Vom Image-Bau über die Registrierung bei GitHub bis zum Job-Ende: So arbeiten die selbst gehosteten GitHub-Actions-Runner dieses Repositories.</p>
+        <p class="scope">Grundlage ist <code>main</code> mit dem Merge von Pull Request #1 (<code>93e7445</code>), also der Stand nach den Review-Fixes. Dieser Bericht erklärt die Konfiguration im Repository; er ist kein Nachweis über ein aktuell laufendes Deployment.</p>
+        <div class="note">
+          <p><strong>GitHub verteilt die Arbeit. Dein Host führt sie aus.</strong> Der Runner verbindet sich mit GitHub, übernimmt passende Jobs und meldet Ergebnisse zurück. Docker stellt die Laufzeitumgebung bereit. Das Entrypoint-Script automatisiert Registrierung und Abmeldung.</p>
+        </div>
+      </header>
+
+      <section id="ueberblick" aria-labelledby="ueberblick-title">
+        <h2 id="ueberblick-title"><span class="section-no">01</span>Welche Teile zusammenspielen</h2>
+        <p>Ein Workflow besteht aus Jobs. GitHub verarbeitet Ereignisse wie Push, Pull Request oder manuellen Start, berücksichtigt Job-Abhängigkeiten und sucht einen verfügbaren Runner. Der Runner ist das Programm, das den zugewiesenen Job tatsächlich ausführt.</p>
+        <figure class="architecture">
+          <div class="diagram-node"><strong>GitHub Actions</strong><span>Trigger, Job-Warteschlange, Status und Workflow-Logs</span></div>
+          <div class="connection"><span class="arrow" aria-hidden="true">↑</span><span>Der Runner baut ausgehende HTTPS-Verbindungen auf.</span></div>
+          <div class="host">
+            <p class="host-label">Dein Docker-Host · auf einem Mac liegt der Daemon in einer Linux-VM</p>
+            <div class="diagram-node"><strong>Runner-Container</strong><span>Entrypoint, Runner-Listener, Worker und normale Job-Prozesse</span></div>
+            <div class="connection"><span class="arrow" aria-hidden="true">↓</span><span>Optional: Docker-Befehle über den Host-Socket</span></div>
+            <div class="diagram-node"><strong>Host-Docker-Daemon</strong><span>Erstellt zusätzliche Build- und Service-Container neben dem Runner.</span></div>
+          </div>
+          <figcaption>Die Verbindung zu GitHub wird vom Runner aus aufgebaut. Zusätzliche Docker-Container entstehen nur, wenn der Workflow sie benötigt und der Docker-Daemon erreichbar ist.</figcaption>
+        </figure>
+        <p>Die Rechenlast liegt auf deinem Host. GitHub bleibt für die Workflow-Steuerung zuständig. Deshalb bleiben Tests, die über diesen Runner laufen, reguläre GitHub-Actions-Jobs.</p>
+        <table>
+          <caption>Die zentralen Dateien</caption>
+          <thead><tr><th scope="col">Datei</th><th scope="col">Verantwortung</th></tr></thead>
+          <tbody>
+            <tr><td><a href="./Dockerfile">Dockerfile</a></td><td>Basisimage, Zusatzpakete, Benutzer und Entrypoint</td></tr>
+            <tr><td><a href="./compose.yaml">compose.yaml</a></td><td>Containerstart, Umgebung, Ressourcenlimits, Neustart und Logs</td></tr>
+            <tr><td><a href="./entrypoint.sh">entrypoint.sh</a></td><td>Eingabeprüfung, Token-Anforderung, Registrierung, Ausführung und Abmeldung</td></tr>
+            <tr><td><a href="./compose.docker.yml">compose.docker.yml</a></td><td>Optionale Verbindung zum Docker-Daemon des Hosts</td></tr>
+            <tr><td><a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a></td><td>Optionaler Linux-Dienst, der pro Job einen frischen Container startet</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="image" aria-labelledby="image-title">
+        <h2 id="image-title"><span class="section-no">02</span>Vom Image zum laufenden Container</h2>
+        <p>Das Dockerfile verwendet das offizielle Image <code>ghcr.io/actions/actions-runner</code>. Die aktuelle Datei fixiert Version <code>2.338.2</code> zusätzlich über einen SHA-256-Digest. Damit ist die verwendete Image-Basis eindeutig festgelegt.</p>
+        <pre><code>FROM ghcr.io/actions/actions-runner:2.338.2@sha256:759a1d94a15b05941aba5196974ff43fe15b4cbba29b694b35cbc32a1166b232</code></pre>
+        <p>Das Basisimage enthält Ubuntu 24.04, den GitHub-Runner, Git, <code>curl</code>, <code>jq</code>, Docker CLI und Buildx. Der Benutzer <code>runner</code> hat UID <code>1001</code> und passwortloses <code>sudo</code>. Dein Dockerfile ergänzt <code>tini</code>, optionale APT-Pakete und das eigene Entrypoint-Script. <a href="#quelle-image">[1]</a></p>
+        <p><strong>Ein Image ist eine Vorlage; ein Container ist eine Instanz dieser Vorlage.</strong> Mehrere Container können dasselbe Image verwenden. Jeder Container besitzt eine eigene beschreibbare Dateisystemschicht, solange er nicht ausdrücklich gemeinsame Hostverzeichnisse oder Volumes einbindet.</p>
+        <p>Ein Start mit folgendem Befehl baut das Image und erstellt beziehungsweise aktualisiert den Compose-Dienst:</p>
+        <pre><code>docker compose up -d --build</code></pre>
+        <p><code>--build</code> baut unter Nutzung des vorhandenen Build-Caches. <code>-d</code> startet im Hintergrund. Die Werte aus <code>.env</code> werden für die Variablenersetzung in Compose verwendet und die dort aufgeführten Umgebungsvariablen an den Container übergeben.</p>
+        <p>Die Startkette lautet:</p>
+        <pre><code>tini (PID 1)
+  └─ /usr/local/bin/entrypoint.sh
+       └─ ./run.sh
+            └─ Runner-Listener und Job-Worker</code></pre>
+        <p><code>tini</code> reicht Stoppsignale weiter und sammelt verwaiste Prozesse ein. Der Entrypoint läuft in <code>/home/runner</code> und bereitet dort die Registrierung vor.</p>
+        <div class="note">
+          <p><strong>Linux bleibt Linux.</strong> Auf einem Mac läuft dieses Image in einer Linux-VM. Der Runner meldet sich deshalb als Linux-Runner. Native macOS-Tests benötigen einen eigenen macOS-Runner.</p>
+        </div>
+        <p>Die Werkzeugausstattung entspricht außerdem nicht automatisch einem kompletten GitHub-gehosteten <code>ubuntu-latest</code>-System. Benötigte Node-, Python-, Browser- oder Compiler-Abhängigkeiten müssen das Image oder der jeweilige Workflow bereitstellen.</p>
+      </section>
+
+      <section id="registrierung" aria-labelledby="registrierung-title">
+        <h2 id="registrierung-title"><span class="section-no">03</span>Wie die Registrierung funktioniert</h2>
+        <h3>Das Ziel bestimmt den Geltungsbereich</h3>
+        <p>Der Entrypoint liest und prüft <code>GITHUB_URL</code>. Er entfernt einen abschließenden Schrägstrich beziehungsweise das Suffix <code>.git</code> und leitet daraus den API-Pfad ab.</p>
+        <table>
+          <caption>Registrierungsziele</caption>
+          <thead><tr><th scope="col">URL-Muster</th><th scope="col">API-Geltungsbereich</th></tr></thead>
+          <tbody>
+            <tr><td><code>https://github.com/owner/repo</code></td><td>Repository: <code>repos/owner/repo</code></td></tr>
+            <tr><td><code>https://github.com/org</code></td><td>Organisation: <code>orgs/org</code></td></tr>
+            <tr><td><code>https://github.com/enterprises/name</code></td><td>Enterprise: <code>enterprises/name</code></td></tr>
+          </tbody>
+        </table>
+        <p>Ein persönlicher Account hat keinen gemeinsamen Runner-Pool für alle eigenen Repositories. Eine URL mit nur einem Namen nach dem Host wird vom Script als Organisationsziel interpretiert.</p>
+        <p>Für GitHub.com verwendet das Script <code>https://api.github.com</code>. Bei GitHub Enterprise Server leitet es standardmäßig <code>&lt;host&gt;/api/v3</code> ab. <code>GITHUB_API_URL</code> kann diese Vorgabe überschreiben. Ziel und API-Basis müssen HTTPS verwenden.</p>
+        <h3>Vier verschiedene Token-Aufgaben</h3>
+        <table>
+          <caption>Authentifizierung und Berechtigungen</caption>
+          <thead><tr><th scope="col">Token</th><th scope="col">Aufgabe</th></tr></thead>
+          <tbody>
+            <tr><td><code>ACCESS_TOKEN</code></td><td>Authentifiziert API-Aufrufe, die Registrierungs- und Entfernungstoken erzeugen.</td></tr>
+            <tr><td><code>RUNNER_TOKEN</code></td><td>Erlaubt die Registrierung. Kann direkt übergeben oder per API beschafft werden.</td></tr>
+            <tr><td>Entfernungstoken</td><td>Erlaubt <code>config.sh remove</code>, um die Registrierung zu entfernen.</td></tr>
+            <tr><td><code>GITHUB_TOKEN</code></td><td>Wird von GitHub pro Job für Zugriffe aus dem Workflow erzeugt.</td></tr>
+          </tbody>
+        </table>
+        <p>Mit <code>ACCESS_TOKEN</code> fordert der Entrypoint beispielsweise folgendes Registrierungstoken an:</p>
+        <pre><code>POST https://api.github.com/repos/&lt;owner&gt;/&lt;repo&gt;/actions/runners/registration-token
+Authorization: Bearer &lt;ACCESS_TOKEN&gt;</code></pre>
+        <p>Im tatsächlichen Aufruf liest <code>curl</code> den Authorization-Header von der Standardeingabe. Das Verwaltungstoken steht dadurch nicht als Argument in der Kommandozeile. Verbindungs-, Laufzeit- und Wiederholungsgrenzen begrenzen die Wartezeit auf die API.</p>
+        <p>Der Entrypoint wertet den HTTP-Status der Antwort aus. Bei <code>401</code>, <code>404</code> oder <code>403</code> ohne Rate-Limit-Hinweis ist das Token falsch, ohne Berechtigung oder das Ziel falsch; ein späterer Versuch würde genauso scheitern. Der Container endet dann mit Exit-Status <code>78</code>. Bei <code>5xx</code>, <code>429</code>, einem Rate-Limit oder einem Netzwerkfehler endet er mit <code>1</code>, und ein Neustart darf es erneut versuchen.</p>
+        <p>Die API liefert ein Token mit einer Stunde Gültigkeit. Ein Fine-grained PAT braucht für Repository-Runner <code>Administration: write</code>; bei Organisationsrunnern ist die relevante Organisationsberechtigung <code>Self-hosted runners: write</code>. <a href="#quelle-api">[2]</a></p>
+        <p><strong>Nach der Registrierung beendet der Ablauf dieses Tokens keinen laufenden Runner.</strong> Der konfigurierte Runner verwendet seine eigene Identität für die Verbindung zum Actions-Dienst. Ein neues Registrierungstoken wird beim nächsten Registrierungsdurchlauf benötigt.</p>
+        <p>Ein direkt übergebenes <code>RUNNER_TOKEN</code> ist deshalb für einen dauerhaft neu startenden ephemeren Pool unpraktisch: Nach dem Ablauf kann es keine weitere Registrierung ermöglichen. <code>ACCESS_TOKEN</code> kann frische Token anfordern, solange es selbst gültig bleibt und ausreichende Rechte besitzt.</p>
+        <h3>Name, Labels und lokale Zugangsdaten</h3>
+        <p>Ohne festen <code>RUNNER_NAME</code> verwendet das Script <code>&lt;RUNNER_NAME_PREFIX&gt;-&lt;HOSTNAME&gt;</code>, standardmäßig also etwa <code>docker-abc123</code>. Beim normalen Docker-Start entspricht der Hostname dem kurzen Container-Identifier.</p>
+        <pre><code>ACTIONS_RUNNER_INPUT_TOKEN=&lt;registration-token&gt; ./config.sh \
+  --unattended \
+  --replace \
+  --url https://github.com/&lt;owner&gt;/&lt;repo&gt; \
+  --name docker-abc123 \
+  --work _work \
+  --labels containerized \
+  --ephemeral</code></pre>
+        <p><code>--unattended</code> verhindert Rückfragen. <code>--replace</code> ersetzt eine vorhandene Registrierung gleichen Namens. <code>--ephemeral</code> begrenzt die Registrierung auf einen Job. Runner-Gruppe, Standardlabels und Selbstupdate werden bei Bedarf durch weitere Argumente gesteuert.</p>
+        <p>Das Registrierungstoken erhält <code>config.sh</code> über die Umgebungsvariable <code>ACTIONS_RUNNER_INPUT_TOKEN</code>. Es wird nicht als Kommandozeilenargument übergeben. Vor einer neuen Einrichtung entfernt das Script lokale Alt-Konfiguration mit <code>config.sh remove --local</code>, einschließlich migrierter Runner-Dateien.</p>
+        <p><code>config.sh</code> läuft dabei im Hintergrund, und der Entrypoint wartet darauf. Bash würde ein Stoppsignal sonst erst nach dem Ende von <code>config.sh</code> bearbeiten, und <code>config.sh</code> wiederholt Verbindungsversuche minutenlang, wenn GitHub nicht erreichbar ist. So beendet ein Stopp auch eine laufende Registrierung sofort. Lehnt <code>config.sh</code> ein direkt übergebenes <code>RUNNER_TOKEN</code> ab, endet der Container mit <code>78</code>: Dieses Token wird mit der Zeit nur älter.</p>
+        <p>Ein Sonderfall erhält eine bestehende Registrierung: Fehlt <code>ACCESS_TOKEN</code> und liegt im selben Container noch <code>.runner</code> vor, verwendet der Entrypoint diese Registrierung weiter. So kann ein bestehender Runner auch mit inzwischen abgelaufenem Registrierungstoken erneut starten. Nach einem abgeschlossenen ephemeren Job fehlt diese Registrierung; dann wird wieder ein gültiges Token benötigt.</p>
+        <p>Der Runner speichert Metadaten und Zugangsdaten in Dateien wie <code>.runner</code>, <code>.credentials</code> und <code>.credentials_rsaparams</code>. Bei seiner Konfiguration entsteht ein Schlüsselpaar; die eigene Runner-Identität ermöglicht später den Zugriff auf die Jobnachrichten. <a href="#quelle-auth">[3]</a></p>
+        <p class="source-line">Die tatsächlichen Argumente und der Token-Austausch stehen in <a href="./entrypoint.sh">entrypoint.sh</a>. Ein fester Runnername ist nur für eine einzelne Instanz geeignet.</p>
+      </section>
+
+      <section id="jobs" aria-labelledby="jobs-title">
+        <h2 id="jobs-title"><span class="section-no">04</span>Vom wartenden Runner zum fertigen Job</h2>
+        <h3>Der Runner holt seine Aufträge</h3>
+        <p>Nach der Einrichtung startet <code>run.sh</code> den Listener. Dieser authentifiziert sich beim Actions-Dienst und wartet auf Jobnachrichten. Die Verbindung wird vom Runner aus aufgebaut; die Warteschlange wird über HTTP-Anfragen mit langer Wartezeit abgefragt. <a href="#quelle-auth">[3]</a></p>
+        <p>Für die Jobannahme ist kein eingehender Port nötig. Ausgehend braucht der Host HTTPS über Port <code>443</code> sowie Zugriff auf die für Actions, Downloads und Artefakte verwendeten Dienste. Die Meldung <code>Listening for Jobs</code> zeigt an, dass der Listener auf Arbeit wartet. <a href="#quelle-runner">[4]</a></p>
+        <h3>Alle angeforderten Labels müssen passen</h3>
+        <p>Ein Workflow im Zielrepository kann den Runner so auswählen. <code>./run-tests.sh</code> steht hier beispielhaft für den Testbefehl dieses Zielprojekts:</p>
+        <pre><code>jobs:
+  test:
+    runs-on: [self-hosted, linux, containerized]
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./run-tests.sh</code></pre>
+        <p>Der Runner muss alle Labels aus <code>runs-on</code> besitzen. Die Standardlabels beschreiben <code>self-hosted</code>, Betriebssystem und Architektur, etwa <code>Linux</code> und <code>X64</code> oder <code>ARM64</code>. Eigene Labels kommen aus <code>RUNNER_LABELS</code>. Labelnamen werden ohne Beachtung der Groß-/Kleinschreibung verglichen. <a href="#quelle-labels">[5]</a></p>
+        <p>GitHub weist den Job einem passenden freien Runner zu. Fehlt ein solcher Runner, bleibt der Job in der Warteschlange; nach 24 Stunden ohne passenden Runner schlägt er fehl. Ein automatischer Wechsel zu einem GitHub-gehosteten Runner ist nicht vorgesehen. <a href="#quelle-runner">[4]</a></p>
+        <h3>Der Worker führt die Steps aus</h3>
+        <ol class="flow">
+          <li><strong>Job übernehmen</strong><span>Der Listener startet einen Worker für den zugewiesenen Job.</span></li>
+          <li><strong>Arbeitsumgebung vorbereiten</strong><span>Der Worker lädt benötigte Actions. Ein Checkout findet statt, wenn der Workflow einen entsprechenden Step enthält.</span></li>
+          <li><strong>Steps ausführen</strong><span>Shellbefehle, Setup-Actions, Installationen, Tests und Builds laufen in der vom Workflow festgelegten Reihenfolge.</span></li>
+          <li><strong>Nachbereitung und Ergebnis</strong><span>Post-Schritte laufen nach ihren Bedingungen; Status und Logs werden an GitHub übertragen.</span></li>
+        </ol>
+        <p>Normale <code>run:</code>-Steps sind Prozesse im Runner-Container unter Benutzer <code>runner</code>. Sie teilen Arbeitsdateien, starten aber jeweils eine eigene Shell. Ein <code>cd</code> oder eine nur in der Shell gesetzte Variable wird deshalb nicht automatisch in den nächsten Step übernommen.</p>
+        <p>GitHub erzeugt für jeden Job ein eigenes <code>GITHUB_TOKEN</code>. Seine Rechte werden durch Repository-, Organisations- und Workflow-Einstellungen begrenzt. Dieses Token ist vom Runner-Verwaltungstoken unabhängig. <a href="#quelle-jobtoken">[6]</a></p>
+        <p>Jobausgaben erscheinen in GitHub Actions. Beliebige Dateien aus dem Arbeitsverzeichnis werden nicht automatisch zu dauerhaften Artefakten: Dafür muss der Workflow ausdrücklich Upload- beziehungsweise Cache-Actions verwenden.</p>
+      </section>
+
+      <section id="lebenszyklus" aria-labelledby="lebenszyklus-title">
+        <h2 id="lebenszyklus-title"><span class="section-no">05</span>Was nach einem Job erhalten bleibt</h2>
+        <p>Compose setzt standardmäßig <code>EPHEMERAL=true</code>. Eine solche Runner-Registrierung verarbeitet einen Job. GitHub entfernt sie danach; die Bereinigung und Wiederbereitstellung der Umgebung übernimmt deine Automatisierung. <a href="#quelle-runner">[4]</a></p>
+        <p>Für den nächsten Durchlauf gibt es zwei Betriebsweisen: <code>docker compose up</code> startet denselben Container erneut; der optionale systemd-Dienst erstellt jeweils einen neuen Container. Der folgende Ablauf beschreibt zunächst <code>compose up</code>.</p>
+        <figure>
+          <ol class="flow">
+            <li><strong>Job endet</strong><span>Der Job meldet sein Ergebnis, auch bei einem normalen Testfehler.</span></li>
+            <li><strong>Registrierung und Runner-Laufzeit enden</strong><span>Der ephemere Runner wird entfernt und sein Prozess beendet sich.</span></li>
+            <li><strong>Docker startet denselben Container erneut</strong><span>Die Regel <code>restart: unless-stopped</code> übernimmt den Neustart.</span></li>
+            <li><strong>Entrypoint bereitet den nächsten Durchlauf vor</strong><span>Er löscht das Arbeitsverzeichnis, erzeugt es neu und registriert den Runner erneut.</span></li>
+          </ol>
+          <figcaption>Die Arbeitsverzeichnis-Bereinigung findet am Anfang des nächsten Entrypoint-Durchlaufs statt. Sie ist keine vollständige Neuerstellung des Containers.</figcaption>
+        </figure>
+        <div class="note">
+          <p class="note-title">Ephemere Registrierung, weiterverwendeter Container</p>
+          <p><code>EPHEMERAL=true</code> liefert hier ein frisches Arbeitsverzeichnis. Die übrige beschreibbare Containerschicht bleibt bei einem Neustart erhalten. Das ist die wichtigste Grenze dieser Umsetzung.</p>
+        </div>
+        <table>
+          <caption>Zustand nach einem normalen ephemeren Durchlauf</caption>
+          <thead><tr><th scope="col">Bereich</th><th scope="col">Verhalten</th></tr></thead>
+          <tbody>
+            <tr><td>Runner-Registrierung</td><td>Wird für den nächsten Durchlauf neu eingerichtet.</td></tr>
+            <tr><td>Arbeitsverzeichnis</td><td>Wird beim nächsten Start gelöscht und neu angelegt, auch nach einem vorherigen Absturz.</td></tr>
+            <tr><td>Absolutes Host-Arbeitsverzeichnis</td><td>Der Unterordner dieses Runners wird bei jedem Ende des Entrypoints entfernt, auch nach einem Fehler beim Start. Nur bei einem harten Abbruch (<code>SIGKILL</code>) können Reste bleiben.</td></tr>
+            <tr><td>Home-Dateien außerhalb des Arbeitsverzeichnisses</td><td>Bleiben im selben Container erhalten.</td></tr>
+            <tr><td><code>/tmp</code> und mit <code>sudo</code> installierte Pakete</td><td>Bleiben im selben Container erhalten.</td></tr>
+            <tr><td>Images, Volumes und Build-Caches im Host-Docker</td><td>Bleiben unabhängig vom Runner-Container erhalten.</td></tr>
+          </tbody>
+        </table>
+        <p>Mit <code>EPHEMERAL=false</code> wartet der Runner nach einem Job auf den nächsten. Registrierung und Arbeitsverzeichnis bleiben während dieser Laufzeit bestehen. Beim tatsächlichen Containerneustart erfolgt normalerweise eine neue Registrierung; ohne Verwaltungstoken wird eine vorhandene Registrierung weiterverwendet. Ein absolutes Arbeitsverzeichnis wird auch im persistenten Modus bei jedem Ende des Entrypoints entfernt.</p>
+        <p><code>docker compose up -d --force-recreate</code> erstellt einen neuen Container und setzt damit dessen beschreibbare Schicht zurück. Bind-Mounts und Host-Docker-Zustand bleiben bestehen. Nach harten Abbrüchen können alte Runner-Unterverzeichnisse auf dem Host zurückbleiben.</p>
+        <p>Ein fehlgeschlagener Test ist außerdem nicht gleichbedeutend mit einem defekten Runner. Das Testergebnis wird in GitHub gemeldet; der ephemere Lebenszyklus kann anschließend regulär weitergehen.</p>
+        <h3>Ein neuer Container pro Job über systemd</h3>
+        <p>Die Vorlage <a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a> verwendet einen einmaligen Compose-Aufruf. Der Container nimmt einen Job an und wird danach durch <code>--rm</code> entfernt. <code>-e EPHEMERAL=true</code> erzwingt diesen Modus, auch wenn die Env-Datei etwas anderes sagt:</p>
+        <pre><code>docker compose -p &lt;instanz&gt; --env-file &lt;instanz&gt;.env \
+  run --build --rm -T -e EPHEMERAL=true --name &lt;instanz&gt;-runner runner</code></pre>
+        <p>systemd startet nach fünf Sekunden den nächsten Durchlauf aus dem Image. Dadurch werden Home-Dateien, <code>/tmp</code>, nachinstallierte Pakete und jede Änderung am Runner selbst in der beschreibbaren Containerschicht verworfen. Host-Bind-Mounts, Images, Volumes und Host-Build-Caches bleiben davon unabhängig. Mit dem Docker-Override gilt die Trennung deshalb nicht: Ein Job kann über den Socket den Host verändern, auch das Repository unter <code>/opt/actions-runner-docker</code>, aus dem jeder spätere Container gebaut wird.</p>
+        <p><code>docker compose run</code> reicht Stoppsignale nicht an den Container weiter. Der Dienst stoppt den benannten Container deshalb selbst mit <code>ExecStop=docker stop -t 90</code>; der Entrypoint meldet den Runner dann ab. Vor jedem Start prüft <code>ExecCondition</code> mit <code>docker compose config -q</code>, ob Env-Datei und Pflichtwerte vorhanden sind. Fehlen sie, bleibt der Dienst gestoppt statt alle fünf Sekunden in denselben Fehler zu laufen. Dasselbe bewirkt <code>RestartPreventExitStatus=78</code> für Einstellungen, die nicht funktionieren können, und für Token, die GitHub ablehnt.</p>
+        <p>Die Dienstvorlage erwartet das Repository unter <code>/opt/actions-runner-docker</code> und eine zum Instanznamen passende Env-Datei. Ein anderer Ablageort benötigt ein angepasstes <code>WorkingDirectory</code>. Der Dienst braucht <code>ACCESS_TOKEN</code>, weil ein <code>RUNNER_TOKEN</code> höchstens für eine Registrierung reicht. Docker-Jobs schaltet die Env-Datei einer Instanz mit <code>COMPOSE_FILE=compose.yaml:compose.docker.yml</code> ein; die gemeinsame Vorlage bleibt unverändert. Ein eventuell nach einem Absturz zurückgebliebener Container mit dem festen Instanznamen wird vor dem Start entfernt.</p>
+      </section>
+
+      <section id="docker" aria-labelledby="docker-title">
+        <h2 id="docker-title"><span class="section-no">06</span>Wie Docker innerhalb eines Jobs funktioniert</h2>
+        <p>Im Basis-Setup ist zwar die Docker CLI installiert, aber kein Daemon für die Jobs verbunden. Deshalb funktionieren Docker-Builds, Docker-Container-Actions und Service-Container erst mit einer zusätzlichen Daemon-Anbindung.</p>
+        <p>Das optionale Override wird pro Runner-Set in dessen Env-Datei eingeschaltet. Das wirkt für <code>docker compose</code> und für den systemd-Dienst gleichermaßen:</p>
+        <pre><code>COMPOSE_FILE=compose.yaml:compose.docker.yml
+DOCKER_GID=&lt;gruppe von /var/run/docker.sock&gt;</code></pre>
+        <p><code>DOCKER_GID</code> muss zur Gruppe des Host-Sockets passen. Auf einem Linux-Host ermittelt <code>stat -c %g /var/run/docker.sock</code> diese Gruppen-ID. Das Override ergänzt diese Gruppe für den Benutzer im Container. Mit <code>COMPOSE_FILE</code> lädt Compose ein lokales <code>compose.override.yaml</code> nicht mehr von selbst; wer darüber eine Token-Datei einbindet, hängt es an die Liste an.</p>
+        <h3>Der Host-Daemon erstellt weitere Container</h3>
+        <p>Das Override bindet <code>/var/run/docker.sock</code> ein. Docker-Befehle im Runner werden dadurch vom Host-Daemon ausgeführt. Zusätzliche Container laufen als Geschwister des Runner-Containers auf demselben Docker-Host.</p>
+        <pre><code>Docker-Host
+├─ Runner-Container
+├─ Testcontainer, den ein Job mit docker run startet
+└─ Datenbankcontainer, den ein Job als Service benötigt</code></pre>
+        <p>Diese Konfiguration betreibt keinen eigenen Docker-Daemon im Runner. Sie ergänzt die Hostadresse <code>host.docker.internal</code> und gibt den Runnern nur die Labels aus <code>RUNNER_DOCKER_LABELS</code>, standardmäßig nur <code>docker</code>. Weder <code>RUNNER_LABELS</code> noch die Standardlabels <code>self-hosted</code>, <code>Linux</code> und <code>X64</code> sind gesetzt. Jobs fordern diese Runner deshalb ausdrücklich an:</p>
+        <pre><code>runs-on: docker</code></pre>
+        <h3>Warum Host und Runner denselben Pfad brauchen</h3>
+        <p>Bei einem Bind-Mount interpretiert der Daemon den Quellpfad auf seinem eigenen Host. Ein Pfad, der nur im Runner-Container existiert, reicht daher nicht aus. <a href="#quelle-bind">[7]</a></p>
+        <pre><code>docker run --rm -v "$PWD:/src" &lt;image&gt;</code></pre>
+        <p>Damit dieser Befehl die Checkout-Dateien findet, wird standardmäßig <code>/var/lib/actions-runner/&lt;compose-projekt&gt;</code> auf Host und Runner unter demselben absoluten Pfad eingebunden. Docker legt das Verzeichnis als root an. Die Projekte sind dadurch voneinander getrennt. Das Entrypoint-Script hängt zusätzlich pro Runner einen Unterordner mit Modus <code>700</code> an:</p>
+        <pre><code>Host:    /var/lib/actions-runner/ucsl/docker-abc123/
+Runner:  /var/lib/actions-runner/ucsl/docker-abc123/</code></pre>
+        <p>Die Checkout-Verzeichnisse liegen wiederum darunter. <code>RUNNER_DOCKER_WORKDIR</code> kann den gemeinsamen Basispfad ändern. Ein eingebundenes Verzeichnis, in das andere Konten schreiben dürfen oder das weder root noch dem Runner gehört, lehnt der Entrypoint mit Exit-Status <code>78</code> ab: Sonst könnte ein anderes Konto auf dem Host das Runner-Verzeichnis gegen ein eigenes austauschen. Verschiedene Runnernamen trennen die Arbeitsverzeichnisse mehrerer Replikate. Bei jedem Ende räumt der Entrypoint den Unterordner dieses Runners auf.</p>
+        <h3>Welche Workflow-Funktionen unterstützt sind</h3>
+        <table>
+          <caption>Unterstützung mit dem aktuellen Host-Socket-Override</caption>
+          <thead><tr><th scope="col">Funktion</th><th scope="col">Status und Grenze</th></tr></thead>
+          <tbody>
+            <tr><td><code>docker build</code></td><td>Unterstützt.</td></tr>
+            <tr><td><code>docker run</code></td><td>Unterstützt; Bind-Mounts funktionieren für die gemeinsam verfügbaren Hostpfade.</td></tr>
+            <tr><td>Docker-Container-Actions</td><td>Unterstützt, etwa <code>uses: docker://…</code> und Dockerfile-Actions.</td></tr>
+            <tr><td><code>services:</code></td><td>Unterstützt; veröffentlichte Service-Ports sind über den Host erreichbar.</td></tr>
+            <tr><td>Job mit <code>container:</code></td><td>Mit dieser Konfiguration nicht unterstützt: Weitere Runnerpfade fehlen auf dem Host.</td></tr>
+          </tbody>
+        </table>
+        <p>Bei einem <code>container:</code>-Job will der Runner unter anderem <code>/home/runner/externals</code> in den Jobcontainer einbinden. Dieser Pfad existiert im aktuellen Setup nur im Runner-Container. Das README und der Kommentar im Docker-Override grenzen diese Funktion deshalb ausdrücklich aus.</p>
+        <p>Bei Services verweist <code>localhost</code> auf den Runner-Container. Ein Service veröffentlicht seinen Port auf dem Host, und der Runner erreicht ihn über <code>host.docker.internal</code>. Damit parallele Jobs nicht um denselben Hostport konkurrieren, wählt Docker den Port, und der Job liest ihn aus dem Kontext:</p>
+        <pre><code>services:
+  db:
+    image: postgres:17
+    ports: ["5432"]
+steps:
+  - run: psql -h host.docker.internal -p ${{ job.services.db.ports['5432'] }} ...</code></pre>
+        <p>Veröffentlichte Ports sind auf allen Hostschnittstellen offen, und Dockers Regeln umgehen <code>ufw</code>. Der Host gehört deshalb hinter eine Firewall, die eingehenden Verkehr verwirft.</p>
+        <p class="source-line">Die projektbezogene Unterstützung und ihre Grenzen stehen im Abschnitt „Docker in jobs“ der <a href="./README.md">README.md</a>.</p>
+      </section>
+
+      <section id="grenzen" aria-labelledby="grenzen-title">
+        <h2 id="grenzen-title"><span class="section-no">07</span>Ressourcen, Isolation und Secrets</h2>
+        <h3>Limits gelten für den Runner-Container</h3>
+        <p>Compose begrenzt standardmäßig CPU-Zeit auf das Äquivalent von zwei CPUs und RAM auf <code>4g</code>. Das ist keine Reservierung exklusiver CPU-Kerne. Normale Test- und Buildprozesse innerhalb des Runner-Containers teilen diese Limits.</p>
+        <p>Zusätzliche Container des Host-Daemons besitzen eigene Limits. Die CPU- und RAM-Grenzen des Runners begrenzen diese Geschwister-Container nicht automatisch. Diese Folgerung ergibt sich aus den getrennten Containern und den Ressourcenlimits pro Container. <a href="#quelle-ressourcen">[8]</a></p>
+        <div class="note warning">
+          <p class="note-title">Docker-Socket bedeutet weitreichende Hostkontrolle</p>
+          <p>Ein Workflow mit Zugriff auf den Socket eines üblichen rootful Docker-Daemons kann privilegierte Container starten und Hostdateien einbinden. Damit erhält er praktisch Root-Kontrolle über den Docker-Host. Bei Docker Desktop läuft dieser Daemon in einer Linux-VM; freigegebene Dateien des Macs können ebenfalls betroffen sein.</p>
+        </div>
+        <h3>Ein frisches Arbeitsverzeichnis ist keine vollständige Sicherheitsgrenze</h3>
+        <p>Jobs laufen unter demselben Benutzer wie der Runner und können über passwortloses <code>sudo</code> den Container verändern. Solche Änderungen außerhalb des Arbeitsverzeichnisses überleben den nächsten Containerneustart. Mit Host-Socket können darüber hinaus Änderungen am Docker-Host bestehen bleiben.</p>
+        <p>Auch private Repositories können ungeprüfte Änderungen oder kompromittierte Abhängigkeiten enthalten. Für solche Jobs muss die Ausführungsgrenze zum tatsächlichen Vertrauensniveau passen. Eine getrennte Ausführungsmaschine oder Wegwerf-VM begrenzt andere Risiken als nur das Löschen eines Checkout-Verzeichnisses.</p>
+        <h3>Token werden aus der Jobumgebung entfernt</h3>
+        <p>Der Entrypoint startet den Runner mit folgender bereinigter Umgebung:</p>
+        <pre><code>env -u ACCESS_TOKEN -u ACCESS_TOKEN_FILE \
+    -u RUNNER_TOKEN -u RUNNER_TOKEN_FILE ./run.sh</code></pre>
+        <p>Das reduziert versehentliche Weitergabe an Jobprozesse. Es schützt diese Secrets jedoch nicht zuverlässig vor absichtlich bösartigem Code im selben Container. Der Verwaltungszugang ist für den Entrypoint weiterhin verfügbar, und Jobs haben weitreichende Rechte im Container.</p>
+        <p>Außerhalb der Jobs steht das Token auf keiner Kommandozeile, die andere Konten des Hosts mit <code>ps</code> sehen könnten: <code>curl</code> liest es von der Standardeingabe, <code>config.sh</code> aus <code>ACTIONS_RUNNER_INPUT_TOKEN</code>.</p>
+        <p><code>.env</code> und <code>*.env</code> sind in Git ignoriert. Die <code>.dockerignore</code> lässt ausschließlich <code>entrypoint.sh</code> in den Build-Kontext. Zugangstoken wird dadurch nicht in das Image kopiert. Es bleibt dennoch ein Laufzeit-Secret, dessen Rechte und Gültigkeit begrenzt werden müssen. Env-Dateien mit Token gehören nur dem Konto, das Compose startet (<code>install -m 600 .env.example .env</code>, <code>chmod 600 *.env</code>); sonst kann jedes Konto des Hosts das Token aus der Datei lesen.</p>
+        <h3>Labels steuern Auswahl, keinen Ausschluss</h3>
+        <p>Das Docker-Override trennt die Labels vollständig von denen normaler Runner: Seine Runner tragen nur <code>docker</code>, ohne <code>containerized</code> und ohne die Standardlabels. Weder ein Job mit <code>containerized</code> noch ein breites <code>runs-on: [self-hosted, linux]</code> landet dadurch versehentlich auf einem Runner mit Host-Socket.</p>
+        <p>Labels steuern trotzdem nur die Auswahl. Ein Workflow, der <code>runs-on: docker</code> verlangt, bekommt diesen Runner, ganz gleich, wer den Workflow geändert hat. Ein engerer Zugriff braucht passende Pool-, Repository- oder Runner-Gruppenregeln.</p>
+      </section>
+
+      <section id="betrieb" aria-labelledby="betrieb-title">
+        <h2 id="betrieb-title"><span class="section-no">08</span>Skalieren, stoppen und aktualisieren</h2>
+        <h3>Mehr Runner erlauben mehr gleichzeitige Jobs</h3>
+        <pre><code>docker compose up -d --scale runner=3</code></pre>
+        <p>Drei Runner erlauben bis zu drei gleichzeitig zugewiesene Jobs, soweit Workflow-Abhängigkeiten und GitHub-Regeln das zulassen. Ein einzelner Job bleibt auf einem Runner; darin können Tests intern mehrere Prozesse starten.</p>
+        <p>Mit den Standardlimits können diese drei Runner zusammen CPU-Zeit entsprechend sechs CPUs und je bis zu <code>4g</code> RAM beanspruchen. Zusätzliche Docker-Container kommen gegebenenfalls hinzu. Compose vergrößert oder verkleinert den Pool nicht selbst anhand der Jobwarteschlange.</p>
+        <p>Persönliche Repositories erhalten getrennte Runner-Sets. Eigene Compose-Projektnamen trennen die Dienste und Netzwerke:</p>
+        <pre><code>docker compose -p ucsl --env-file ucsl.env up -d --build</code></pre>
+        <pre><code>docker compose -p dotagents --env-file dotagents.env up -d --build</code></pre>
+        <p>Organisationen können einen gemeinsamen Pool registrieren und Repository-Zugriff über Runner-Gruppen steuern. Ein fest gesetztes <code>RUNNER_NAME</code> darf beim Skalieren nicht für alle Replikate identisch sein.</p>
+        <h3>Sauberes Stoppen und Abmelden</h3>
+        <p>Bei <code>docker compose down</code> sendet Docker ein Stoppsignal. <code>tini</code> reicht es an den Entrypoint weiter. Das Script signalisiert den Runner, wartet auf dessen Prozessende und versucht anschließend, eine noch vorhandene Registrierung zu entfernen. Kommt der Stopp während einer Registrierung, beendet das Script <code>config.sh</code> und räumt danach genauso auf.</p>
+        <pre><code>POST &lt;api-base&gt;/&lt;scope&gt;/actions/runners/remove-token
+
+ACTIONS_RUNNER_INPUT_TOKEN=&lt;remove-token&gt; ./config.sh remove</code></pre>
+        <p>Hat sich ein ephemerer Runner bereits selbst entfernt, ist keine weitere Abmeldung nötig. Ohne <code>ACCESS_TOKEN</code> kann das Script kein Entfernungstoken beschaffen und lässt eine noch vorhandene Registrierung zurück.</p>
+        <p>Compose gibt dem Stoppen <strong>90 Sekunden</strong> Zeit. Danach kann Docker hart beenden. Der systemd-Dienst verwendet ebenfalls <code>docker stop -t 90</code> und hat zusätzlich <code>TimeoutStopSec=120</code> für den gesamten Dienststopp. Damit die Abmeldung in diese Frist passt, sind die Token-Anfrage durch die <code>curl</code>-Grenzen und <code>config.sh remove</code> durch <code>timeout 40</code> begrenzt. Diese Fristen garantieren nicht, dass ein laufender Job vollständig fertig wird. Ist GitHub in dieser Zeit nicht erreichbar, meldet das Log <code>warning: could not remove</code>, und der Runner bleibt als offline registriert zurück, bis GitHub ihn nach längerer Offline-Zeit selbst entfernt oder jemand ihn in den Einstellungen löscht.</p>
+        <p><code>restart: unless-stopped</code> startet selbstständig beendete Container erneut. Ein ausdrücklich gestoppter Container bleibt gestoppt. <a href="#quelle-neustart">[9]</a></p>
+        <h3>Runner- und Image-Updates haben getrennte Aufgaben</h3>
+        <p>Standardmäßig darf sich die Runner-Software selbst aktualisieren. Mit <code>DISABLE_AUTO_UPDATE=true</code> entfällt dies; dann muss ein ausreichend aktuelles Image bereitgestellt werden. GitHub verlangt bei ausgeschaltetem Selbstupdate Aktualisierung innerhalb von 30 Tagen nach einem neuen Release und kann kritische Sicherheitsupdates früher zur Voraussetzung weiterer Jobs machen. <a href="#quelle-runner">[4]</a></p>
+        <p>Dependabot prüft wöchentlich das Basisimage und die GitHub Actions dieses Repositories. Nach einer übernommenen Dockerfile-Änderung muss das Image neu gebaut und der Dienst entsprechend aktualisiert werden. Ein Selbstupdate des Runners pflegt keine Betriebssystempakete und eigenen Tools.</p>
+        <h3>Fehlersuche beginnt bei Logs, Status und Labels</h3>
+        <p><code>docker compose logs -f</code> zeigt Start- und Registrierungsprobleme. Die Runner-Verwaltung auf GitHub zeigt Erreichbarkeit, Labels und Beschäftigung. Der konkrete Actions-Job zeigt Step-Ausgaben und Testergebnisse. Compose rotiert Containerlogs über den Treiber <code>json-file</code> mit bis zu drei Dateien zu je <code>10m</code>.</p>
+        <table>
+          <caption>Typische Symptome und ihre Ursachen</caption>
+          <thead><tr><th scope="col">Symptom</th><th scope="col">Zuerst prüfen</th></tr></thead>
+          <tbody>
+            <tr><td>Job bleibt in der Warteschlange</td><td>Passende Labels, online befindlicher Runner und freie Kapazität</td></tr>
+            <tr><td><code>Not Found</code> bei Registrierung</td><td>Ziel-URL, Tokenrechte und Verwechslung von persönlichem Account mit Organisation</td></tr>
+            <tr><td><code>Bad credentials</code></td><td>Tokenwert, Ablauf und Widerruf</td></tr>
+            <tr><td>Docker-Socket nicht nutzbar</td><td>Socket-Mount und passende <code>DOCKER_GID</code></td></tr>
+            <tr><td>Service über <code>localhost</code> unerreichbar</td><td>Host-Portfreigabe und Zugriff über <code>host.docker.internal</code></td></tr>
+            <tr><td>Alter Systemzustand nach Neustart</td><td>Dateien und Pakete außerhalb des bereinigten Arbeitsverzeichnisses</td></tr>
+            <tr><td>Wachsender Plattenverbrauch</td><td>Host-Images, Build-Caches, Volumes und alte Runner-Unterverzeichnisse</td></tr>
+            <tr><td>Container endet mit Exit-Status <code>78</code></td><td>Eine Einstellung, die nicht funktionieren kann, oder ein von GitHub abgelehntes Token; die Meldung im Log nennt sie. Der systemd-Dienst startet dann nicht neu.</td></tr>
+            <tr><td><code>… is a directory</code> bei <code>ACCESS_TOKEN_FILE</code></td><td>Die einzubindende Token-Datei fehlte, und Docker hat an ihrer Stelle ein Verzeichnis angelegt</td></tr>
+            <tr><td><code>… is writable by others or not owned by root</code></td><td><code>RUNNER_DOCKER_WORKDIR</code> zeigt auf ein Verzeichnis, das andere Konten ändern können</td></tr>
+            <tr><td><code>warning: could not remove</code> beim Stopp</td><td>GitHub war innerhalb der Stoppfrist nicht erreichbar; der Runner bleibt offline gelistet</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="konfiguration" aria-labelledby="konfiguration-title">
+        <h2 id="konfiguration-title"><span class="section-no">09</span>Die Konfiguration im Überblick</h2>
+        <p>Die Vorlage <a href="./.env.example">.env.example</a> enthält die konfigurierbaren Werte. Im folgenden Beispiel müssen Ziel und Token vor einem Start ersetzt werden:</p>
+        <pre><code>GITHUB_URL=https://github.com/&lt;owner&gt;/&lt;repo&gt;
+ACCESS_TOKEN=&lt;token&gt;
+RUNNER_LABELS=containerized
+RUNNER_NAME_PREFIX=docker
+EPHEMERAL=true
+RUNNER_CPUS=2
+RUNNER_MEMORY=4g</code></pre>
+        <p>Weil die Datei ein Token enthält, entsteht sie am besten gleich ohne Leserechte für andere: <code>install -m 600 .env.example .env</code>.</p>
+        <table>
+          <caption>Werte, Vorgaben und Auswirkungen</caption>
+          <thead><tr><th scope="col">Variable</th><th scope="col">Vorgabe / Wirkung</th></tr></thead>
+          <tbody>
+            <tr><td><code>GITHUB_URL</code></td><td>Erforderliches Registrierungsziel</td></tr>
+            <tr><td><code>ACCESS_TOKEN</code></td><td>API-Zugang zum Anfordern von Registrierungs- und Entfernungstoken</td></tr>
+            <tr><td><code>RUNNER_TOKEN</code></td><td>Alternative: direkt übergebenes kurzlebiges Registrierungstoken</td></tr>
+            <tr><td><code>RUNNER_LABELS</code></td><td>Zusätzliche, kommaseparierte Labels</td></tr>
+            <tr><td><code>NO_DEFAULT_LABELS</code></td><td><code>false</code>; bei <code>true</code> entfallen die Standardlabels</td></tr>
+            <tr><td><code>RUNNER_NAME_PREFIX</code></td><td><code>docker</code>; Präfix vor dem Container-Hostname</td></tr>
+            <tr><td><code>RUNNER_NAME</code></td><td>Optionaler fester Name; nur für eine einzelne Instanz</td></tr>
+            <tr><td><code>RUNNER_GROUP</code></td><td>Optionale Runner-Gruppe für Organisation oder Enterprise; ohne Wert greift Runner-Standardgruppe <code>Default</code></td></tr>
+            <tr><td><code>RUNNER_WORKDIR</code></td><td><code>_work</code>; relativer Name unter <code>/home/runner</code>. Absolute Pfade bekommen einen Unterordner pro Runner.</td></tr>
+            <tr><td><code>EPHEMERAL</code></td><td><code>true</code> mit Compose; ohne gesetzten Wert bei direktem Containerstart <code>false</code></td></tr>
+            <tr><td><code>DISABLE_AUTO_UPDATE</code></td><td><code>false</code>; bei <code>true</code> muss die Runner-Version über Imagepflege aktuell bleiben</td></tr>
+            <tr><td><code>RUNNER_CPUS</code>, <code>RUNNER_MEMORY</code></td><td><code>2</code> und <code>4g</code>; Limits pro Runner-Container</td></tr>
+            <tr><td><code>EXTRA_APT_PACKAGES</code></td><td>Zusätzliche, durch Leerzeichen getrennte Pakete beim Image-Bau; Änderungen benötigen einen Build</td></tr>
+            <tr><td><code>GITHUB_API_URL</code></td><td>Optionaler API-Basispfad für besondere Enterprise-Konfigurationen</td></tr>
+            <tr><td><code>COMPOSE_FILE</code></td><td>Mit <code>compose.yaml:compose.docker.yml</code> schaltet die Env-Datei eines Runner-Sets das Docker-Override ein, auch für den systemd-Dienst</td></tr>
+            <tr><td><code>DOCKER_GID</code></td><td>Erforderliche Socket-Gruppen-ID bei Verwendung des Docker-Overrides</td></tr>
+            <tr><td><code>RUNNER_DOCKER_LABELS</code></td><td><code>docker</code>; die einzigen Labels der Runner im Docker-Override, anstelle von <code>RUNNER_LABELS</code> und der Standardlabels</td></tr>
+            <tr><td><code>RUNNER_DOCKER_WORKDIR</code></td><td><code>/var/lib/actions-runner/&lt;compose-projekt&gt;</code>; gemeinsamer absoluter Basispfad im Docker-Override, nur für root änderbar</td></tr>
+          </tbody>
+        </table>
+        <p>Zusätzlich unterstützt der Entrypoint <code>ACCESS_TOKEN_FILE</code> und <code>RUNNER_TOKEN_FILE</code>. Der Dateiinhalt hat Vorrang vor dem direkt übergebenen Token; Leerzeichen und Zeilenumbrüche entfernt der Entrypoint. Compose reicht diese Variablen durch; die eigentliche Datei bindet ein lokales <code>compose.override.yaml</code> ein, je Runner-Set eine eigene:</p>
+        <pre><code>services:
+  runner:
+    volumes:
+      - ./secrets/${COMPOSE_PROJECT_NAME}.token:/run/secrets/access_token:ro</code></pre>
+        <p>Der Runner-Benutzer mit UID <code>1001</code> muss die Datei lesen können. Fehlt sie beim Start, legt Docker an ihrer Stelle ein Verzeichnis an; der Entrypoint erkennt das und endet mit <code>78</code>. Eine zweite Instanz desselben Repositories braucht deshalb neben der verlinkten Env-Datei auch eine verlinkte Token-Datei.</p>
+        <p>Der Entrypoint prüft Namen und Arbeitsverzeichnispfade, bevor er sie verwendet. Relative Arbeitsverzeichnisse müssen einfache Verzeichnisnamen sein. Absolute Pfade dürfen kein <code>..</code> enthalten. Neu erstellte Arbeitsverzeichnisse erhalten Modus <code>700</code>. Bereinigung und Erstellung versuchen zunächst normale Benutzerrechte und verwenden <code>sudo</code> als Rückfall, etwa für von Docker-Jobs hinterlassene Root-Dateien.</p>
+        <p>Boolesche Werte werden geprüft: <code>true</code>, <code>yes</code>, <code>on</code> und <code>1</code> aktivieren eine Option; <code>false</code>, <code>no</code>, <code>off</code> und <code>0</code> deaktivieren sie. Andere nichtleere Werte führen zum Abbruch. Ist ein Docker-Socket eingebunden, aber nicht nutzbar, bricht der Start ebenfalls ab. Solche Fehler beendet der Entrypoint mit Exit-Status <code>78</code> (<code>EX_CONFIG</code>), Fehler, die ein späterer Versuch beheben kann, mit <code>1</code>.</p>
+      </section>
+
+      <section id="quellen" aria-labelledby="quellen-title">
+        <h2 id="quellen-title"><span class="section-no">10</span>Quellen und Aussagegrenzen</h2>
+        <p>Projektbezogene Aussagen wurden mit den Dateien dieses Repositorys abgeglichen: <a href="./Dockerfile">Dockerfile</a>, <a href="./entrypoint.sh">entrypoint.sh</a>, <a href="./compose.yaml">compose.yaml</a>, <a href="./compose.docker.yml">compose.docker.yml</a>, <a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a>, <a href="./README.md">README.md</a> und <a href="./.env.example">.env.example</a>, jeweils im Stand von <code>main</code> nach dem Merge <code>93e7445</code>. Allgemeines GitHub- und Docker-Verhalten wurde anhand offizieller Quellen geprüft.</p>
+        <ol class="source-list">
+          <li id="quelle-image"><a href="https://github.com/actions/runner/blob/v2.338.2/images/Dockerfile">GitHub actions/runner: offizielles Image-Dockerfile, Version 2.338.2</a></li>
+          <li id="quelle-api"><a href="https://docs.github.com/en/rest/actions/self-hosted-runners">GitHub REST API: Registrierung und Entfernung selbst gehosteter Runner</a></li>
+          <li id="quelle-auth"><a href="https://github.com/actions/runner/blob/main/docs/design/auth.md">GitHub actions/runner: Authentifizierung und Prozessmodell</a></li>
+          <li id="quelle-runner"><a href="https://docs.github.com/en/actions/reference/runners/self-hosted-runners">GitHub: Runner-Referenz, Jobzuordnung, Kommunikation und Updates</a></li>
+          <li id="quelle-labels"><a href="https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow">GitHub: Selbst gehostete Runner mit Labels und Gruppen auswählen</a></li>
+          <li id="quelle-jobtoken"><a href="https://docs.github.com/en/actions/concepts/security/github_token">GitHub: Das pro Job erzeugte GITHUB_TOKEN</a></li>
+          <li id="quelle-bind"><a href="https://docs.docker.com/engine/storage/bind-mounts/">Docker: Bind-Mounts und Auflösung auf dem Daemon-Host</a></li>
+          <li id="quelle-ressourcen"><a href="https://docs.docker.com/engine/containers/resource_constraints/">Docker: CPU- und Speicherlimits pro Container</a></li>
+          <li id="quelle-neustart"><a href="https://docs.docker.com/engine/containers/start-containers-automatically/">Docker: Neustartregeln und manuelles Stoppen</a></li>
+        </ol>
+        <h3>Was die Projekt-CI prüft</h3>
+        <p>Der Workflow <a href="./.github/workflows/ci.yml">.github/workflows/ci.yml</a> führt ShellCheck, Hadolint, <code>systemd-analyze verify</code>, einen Image-Bau und drei Testskripte aus. <a href="./tests/smoke.sh">tests/smoke.sh</a> lässt den Entrypoint mit Stellvertretern für <code>config.sh</code>, <code>run.sh</code> und <code>curl</code> vollständig durchlaufen, auch Stopp, Abmeldung, Token-Dateien, Exit-Status und Arbeitsverzeichnisse. <a href="./tests/compose.sh">tests/compose.sh</a> prüft die gerenderten Compose-Dateien. <a href="./tests/systemd.sh">tests/systemd.sh</a> führt die Befehle der Dienstvorlage selbst aus. Ohne echte GitHub-Zugangsdaten belegen diese Tests keine reale Registrierung.</p>
+        <p>Für die Aktualisierung dieses Berichts am 2. November 2026 liefen deshalb zusätzlich Live-Tests gegen ein privates Testrepository, auf Docker Desktop mit <code>arm64</code>: Registrierung mit Token in der Umgebung, ein Job mit Checkout und <code>sudo</code> ohne Token in der Jobumgebung, Abmeldung beim Stopp; ephemere Runner über den Befehl der Dienstvorlage, einschließlich <code>ExecStop</code>; Runner im Docker-Override mit <code>runs-on: docker</code>, Docker-Container-Action, Bind-Mount und Service über einen zufälligen Hostport. Zwei Fehler fielen dabei auf und sind behoben: Eine Abmeldung brach nach dem Entfernungstoken ab, und ein Stopp während einer hängenden Registrierung wartete bis zum harten Abbruch. Bei zeitweise gestörter Verbindung zu GitHub endete ein Stopp innerhalb von 17 Sekunden mit der Warnung, dass die Abmeldung nicht möglich war. Ein Linux-Host mit Host-Socket, Organisations- und Enterprise-Ziele sowie GitHub Enterprise Server wurden nicht live geprüft.</p>
+        <p>Spätere Änderungen an Images, Skripten oder GitHub-Verhalten können eine Aktualisierung dieses Berichts erforderlich machen.</p>
+      </section>
+
+      <footer>
+        <p>actions-runner-docker · Technischer Bericht vom 2. November 2026<br>Alle Stile und Diagramme sind in dieser Datei enthalten. Externe Links dienen ausschließlich als Quellen; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
+        <a class="back-top" href="#anfang">Zum Anfang des Berichts</a>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
