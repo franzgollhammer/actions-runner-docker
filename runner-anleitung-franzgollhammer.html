@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Schritt-für-Schritt-Anleitung: einen Runner-Container aus actions-runner-docker für franzgollhammer/franzgollhammer starten, testen und abbauen.">
+  <title>Runner für franzgollhammer · actions-runner-docker</title>
+  <style>
+    :root {
+      --page: #f4f5f3;
+      --paper: #fdfdfb;
+      --ink: #202d35;
+      --muted: #53616a;
+      --accent: #245b74;
+      --visited: #655279;
+      --line: #d4dcde;
+      --soft: #eaf0f2;
+      --code: #edf0ed;
+      --warning-bg: #f9f0df;
+      --warning-ink: #664715;
+      --focus: #1d617e;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-10: 40px;
+      --space-12: 48px;
+      --space-16: 64px;
+      --text-sm: 0.875rem;
+      --text-base: 1rem;
+      --text-body: 1.125rem;
+      --text-lead: 1.25rem;
+      --text-h3: 1.5rem;
+      --text-h2: 1.875rem;
+      --text-title: 3.5rem;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-padding-block-start: var(--space-8); }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font: 400 var(--text-body)/1.65 var(--font);
+      overflow-wrap: anywhere;
+    }
+    ::selection { background: #ccdde4; color: var(--ink); }
+    a { color: var(--accent); text-underline-offset: var(--space-1); }
+    a:visited { color: var(--visited); }
+    a:active { color: var(--ink); }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: var(--space-1); }
+    @media (hover: hover) {
+      a:hover { color: var(--ink); text-decoration-thickness: 2px; }
+    }
+    h1, h2, h3 { font-weight: 600; line-height: 1.2; text-wrap: balance; }
+    h1 { margin: var(--space-6) 0; font-size: var(--text-title); letter-spacing: -0.025em; }
+    h2 { margin: 0 0 var(--space-6); font-size: var(--text-h2); letter-spacing: -0.015em; }
+    h3 { margin: var(--space-10) 0 var(--space-4); font-size: var(--text-h3); }
+    p { margin: 0 0 var(--space-6); max-inline-size: 70ch; text-wrap: pretty; }
+    strong, b { font-weight: 600; }
+    ul, ol { margin-block: 0 var(--space-6); padding-inline-start: var(--space-6); }
+    li + li { margin-block-start: var(--space-2); }
+    li p { margin-block-end: var(--space-3); }
+    code, pre { font-family: var(--mono); }
+    code { font-size: 0.875em; background: var(--code); padding: 2px var(--space-1); border-radius: 2px; }
+    pre {
+      margin: var(--space-6) 0;
+      padding: var(--space-6);
+      background: var(--code);
+      font-size: var(--text-sm);
+      line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      tab-size: 2;
+    }
+    pre code { padding: 0; font-size: inherit; background: transparent; border-radius: 0; }
+    kbd { font-family: var(--mono); font-size: 0.875em; padding: 1px var(--space-1); border: 1px solid var(--line); border-radius: 3px; background: var(--paper); }
+    .shell-label { margin-block-end: calc(-1 * var(--space-4)); color: var(--muted); font-size: var(--text-sm); }
+    .skip-link {
+      position: absolute;
+      inset-block-start: var(--space-4);
+      inset-inline-start: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      background: var(--paper);
+      transform: translateY(-200%);
+      z-index: 2;
+    }
+    .skip-link:focus { transform: translateY(0); }
+    .layout {
+      display: grid;
+      grid-template-columns: 224px minmax(0, 1fr);
+      max-inline-size: 1264px;
+      margin-inline: auto;
+      min-block-size: 100svh;
+    }
+    .sidebar { padding: var(--space-12) var(--space-6) var(--space-12) var(--space-8); min-inline-size: 0; }
+    .sidebar-inner { position: sticky; inset-block-start: var(--space-8); }
+    .project { margin-block-end: var(--space-8); font-size: var(--text-sm); line-height: 1.5; }
+    .project strong { display: block; }
+    .project span { color: var(--muted); }
+    .toc-title { margin: 0 0 var(--space-3); font-size: var(--text-base); }
+    .toc ol { list-style: none; margin: 0; padding: 0; }
+    .toc li + li { margin: 0; }
+    .toc a {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-3);
+      min-block-size: 44px;
+      padding-block: var(--space-2);
+      font-size: var(--text-sm);
+      line-height: 1.5;
+      text-decoration: none;
+    }
+    .toc a span { flex: 0 0 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .toc a:target { text-decoration: underline; }
+    .sidebar-note { margin-block-start: var(--space-8); color: var(--muted); font-size: var(--text-sm); }
+    main { min-inline-size: 0; padding: var(--space-16); background: var(--paper); }
+    .meta { color: var(--muted); font-size: var(--text-sm); }
+    .meta code { font-size: inherit; }
+    .lead { font-size: var(--text-lead); line-height: 1.6; }
+    .scope { color: var(--muted); font-size: var(--text-base); }
+    section { margin-block-start: var(--space-16); padding-block-start: var(--space-10); border-block-start: 1px solid var(--line); scroll-margin-block-start: var(--space-8); }
+    .section-no { display: inline-block; margin-inline-end: var(--space-3); color: var(--accent); font-size: var(--text-body); vertical-align: baseline; font-variant-numeric: tabular-nums; }
+    .note { margin-block: var(--space-8); padding: var(--space-6); background: var(--soft); }
+    .note p:last-child { margin-block-end: 0; }
+    .warning { color: var(--warning-ink); background: var(--warning-bg); }
+    .warning code { background: transparent; }
+    .note-title { margin-block-end: var(--space-2); font-weight: 600; }
+    table { inline-size: 100%; border-collapse: collapse; table-layout: fixed; margin-block: var(--space-6) var(--space-8); font-size: var(--text-base); line-height: 1.5; }
+    caption { margin-block-end: var(--space-3); text-align: start; font-weight: 600; }
+    th, td { padding: var(--space-4) var(--space-3); text-align: start; vertical-align: top; border-block-end: 1px solid var(--line); }
+    th { font-weight: 600; background: var(--soft); }
+    td:first-child { font-weight: 500; }
+    .source-line { color: var(--muted); font-size: var(--text-sm); }
+    figure { margin: var(--space-8) 0; }
+    figcaption { margin-block-start: var(--space-4); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
+    .architecture { padding: var(--space-6); background: var(--soft); }
+    .diagram-node { padding: var(--space-4) var(--space-6); background: var(--paper); }
+    .diagram-node strong, .diagram-node span { display: block; }
+    .diagram-node span { margin-block-start: var(--space-1); font-size: var(--text-base); }
+    .connection { display: flex; gap: var(--space-3); align-items: center; padding: var(--space-4) var(--space-6); color: var(--accent); font-size: var(--text-sm); }
+    .connection .arrow { font-size: var(--text-h3); }
+    .host { padding: var(--space-6); border: 1px dashed var(--accent); }
+    .host-label { margin-block-end: var(--space-4); font-size: var(--text-base); font-weight: 600; }
+    .host .connection { padding-inline: var(--space-4); }
+    .flow { list-style: none; margin: 0; padding: 0; counter-reset: phase; }
+    .flow li { position: relative; padding: var(--space-4) 0 var(--space-4) var(--space-12); margin: 0; border-block-end: 1px solid var(--line); counter-increment: phase; }
+    .flow li::before { content: counter(phase, decimal-leading-zero); position: absolute; inset-inline-start: 0; inset-block-start: var(--space-4); font-size: var(--text-sm); color: var(--accent); font-variant-numeric: tabular-nums; }
+    .flow strong { display: block; }
+    .flow span { display: block; margin-block-start: var(--space-1); font-size: var(--text-base); }
+    .source-list { padding-inline-start: var(--space-6); }
+    .source-list li { padding-block: var(--space-2); }
+    .source-list a { display: inline-block; min-block-size: 24px; }
+    footer { margin-block-start: var(--space-16); padding-block-start: var(--space-8); border-block-start: 1px solid var(--line); color: var(--muted); font-size: var(--text-sm); }
+    footer a { display: inline-block; min-block-size: 44px; padding-block: var(--space-2); }
+
+    @media (max-width: 1100px) {
+      main { padding: var(--space-12) var(--space-8); }
+      h1 { font-size: 3rem; }
+    }
+    @media (max-width: 800px) {
+      .layout { display: block; }
+      .sidebar { padding: var(--space-6); }
+      .sidebar-inner { position: static; }
+      .project { margin-block-end: var(--space-4); }
+      .toc ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-6); }
+      .sidebar-note { display: none; }
+      main { padding: var(--space-10) var(--space-6); }
+    }
+    @media (max-width: 480px) {
+      body { font-size: var(--text-base); }
+      h1 { font-size: 2.5rem; }
+      h2 { font-size: 1.5rem; }
+      h3 { font-size: var(--text-lead); }
+      .lead { font-size: var(--text-body); }
+      .sidebar { padding: var(--space-6) var(--space-4); }
+      .toc ol { column-gap: var(--space-4); }
+      main { padding: var(--space-8) var(--space-4); }
+      section { margin-block-start: var(--space-12); padding-block-start: var(--space-8); }
+      pre, .note, .architecture, .host, .diagram-node { padding: var(--space-4); }
+      .connection { padding: var(--space-3) 0; }
+      th, td { padding: var(--space-3) var(--space-2); font-size: var(--text-sm); }
+      .section-no { font-size: var(--text-base); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    @page { size: A4; margin: 18mm; }
+    @media print {
+      body { color: #202d35; background: white; font-size: 10pt; line-height: 1.5; }
+      .layout { display: block; max-inline-size: none; }
+      .sidebar, .skip-link, .back-top { display: none; }
+      main { padding: 0; background: white; }
+      h1 { font-size: 30pt; }
+      h2 { font-size: 18pt; break-after: avoid; }
+      h3 { font-size: 13pt; break-after: avoid; }
+      section { margin-block-start: 24pt; padding-block-start: 16pt; }
+      p { max-inline-size: 75ch; orphans: 3; widows: 3; }
+      pre { padding: 12pt; font-size: 8pt; }
+      table { font-size: 9pt; }
+      thead { display: table-header-group; }
+      tr, .note, .architecture, .flow li { break-inside: avoid; }
+      .meta, .scope, .source-line, figcaption, footer { font-size: 9pt; }
+      a, a:visited { color: inherit; }
+      .source-list a[href^="https:"]::after { content: " (" attr(href) ")"; font-size: 8pt; overflow-wrap: anywhere; }
+      footer { margin-block-start: 24pt; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#anleitung">Zur Anleitung springen</a>
+  <div class="layout" id="anfang">
+    <aside class="sidebar" aria-label="Navigation der Anleitung">
+      <div class="sidebar-inner">
+        <p class="project"><strong>actions-runner-docker</strong><span>Runner für franzgollhammer</span></p>
+        <nav class="toc" aria-labelledby="toc-title">
+          <h2 class="toc-title" id="toc-title">Schritte</h2>
+          <ol>
+            <li><a href="#ausgangslage"><span>01</span>Ausgangslage</a></li>
+            <li><a href="#token"><span>02</span>Token anlegen</a></li>
+            <li><a href="#absichern"><span>03</span>Repository absichern</a></li>
+            <li><a href="#env"><span>04</span>Env-Datei</a></li>
+            <li><a href="#starten"><span>05</span>Runner starten</a></li>
+            <li><a href="#pruefen"><span>06</span>Registrierung prüfen</a></li>
+            <li><a href="#workflow"><span>07</span>Test-Workflow</a></li>
+            <li><a href="#beobachten"><span>08</span>Lauf beobachten</a></li>
+            <li><a href="#abbauen"><span>09</span>Abbauen</a></li>
+            <li><a href="#fehler"><span>10</span>Fehlerbehebung</a></li>
+          </ol>
+        </nav>
+        <p class="sidebar-note">Eigenständige HTML-Anleitung.<br>Ohne externe Ressourcen lesbar.<br>Begleitet <a href="./runner-bericht.html">den Bericht</a>.</p>
+      </div>
+    </aside>
+
+    <main id="anleitung" tabindex="-1">
+      <header>
+        <p class="meta">Anleitung · <time datetime="2026-11-02">2. November 2026</time></p>
+        <h1>Runner für franzgollhammer starten.</h1>
+        <p class="lead">Schritt für Schritt einen Runner-Container aus diesem Repository für <code>franzgollhammer/franzgollhammer</code> starten: Token anlegen, registrieren, mit einem Test-Workflow prüfen und wieder abbauen.</p>
+        <p class="scope">Grundlage ist <code>main</code> nach dem Merge von Pull Request #2 (<code>fb7eed6</code>). Die Ausgangslage wurde am 2. November 2026 geprüft: Das Ziel-Repository ist öffentlich, enthält nur <code>README.md</code> und <code>assets/</code>, hat keine Workflows und keinen registrierten Runner. Die Fork-Freigabe steht auf <code>first_time_contributors</code>. Docker läuft auf dem Mac über OrbStack (arm64, 8 CPUs, rund 4,9 GB RAM).</p>
+        <div class="note warning" role="note">
+          <p class="note-title">Öffentliches Repository: nur als bewusster, begrenzter Test.</p>
+          <p>Ein selbst gehosteter Runner führt aus, was die Workflows des Repositories verlangen. Bei einem öffentlichen Repository kann ein Pull Request aus einem Fork den Workflow ändern und damit Code auf deinem Rechner ausführen. Der Job hat im Container <code>sudo</code> und erreicht alles, was der Mac im Netz erreicht. Die <a href="./README.md#security">README</a> empfiehlt selbst gehostete Runner deshalb nur für private Repositories.</p>
+          <p>Diese Anleitung sichert das so weit wie möglich ab (Schritt 03 und 07) und baut den Runner am Ende wieder ab (Schritt 09). Für dauerhafte CI dieses Repositories reichen GitHub-gehostete Runner; bei öffentlichen Repositories sind sie kostenlos.</p>
+        </div>
+      </header>
+
+      <section id="ausgangslage" aria-labelledby="ausgangslage-title">
+        <h2 id="ausgangslage-title"><span class="section-no">01</span>Ausgangslage und Entscheidung</h2>
+        <p>Persönliche Konten haben keine kontoweiten Runner. Ein Runner gehört deshalb immer zu genau einem Repository, hier zu <code>franzgollhammer/franzgollhammer</code>. Ohne Workflow, der ihn anfordert, wartet er nur.</p>
+        <table>
+          <caption>Drei Wege für dieses Repository</caption>
+          <thead><tr><th scope="col">Weg</th><th scope="col">Vorteile</th><th scope="col">Nachteile</th></tr></thead>
+          <tbody>
+            <tr><td>A: Kein eigener Runner, <code>ubuntu-latest</code></td><td>Kostenlos bei öffentlichen Repositories, kein Risiko für eigene Rechner, x64</td><td>Keine Kontrolle über die Hardware</td></tr>
+            <tr><td>B: Runner-Container auf dem Mac</td><td>Schnell eingerichtet, alles vorhanden</td><td>Öffentliches Repository, arm64 statt x64, Jobs teilen sich einen Container, läuft nur, solange der Mac läuft</td></tr>
+            <tr><td>C: Runner auf einem eigenen Linux-Server</td><td>Dauerbetrieb, x64, frischer Container pro Job über die systemd-Unit</td><td>Gleiches Risiko durch Fork-Pull-Requests, Einrichtung auf dem Server</td></tr>
+          </tbody>
+        </table>
+        <p>Diese Anleitung beschreibt Weg B als Test. Für Weg C gelten dieselben Schritte; statt <code>docker compose up</code> startet dort die Unit aus <a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a> den Runner (siehe <a href="./README.md#ephemeral-or-persistent">README</a>).</p>
+        <h3>Voraussetzungen</h3>
+        <ul>
+          <li>Docker läuft: <code>docker info</code> antwortet ohne Fehler.</li>
+          <li>Die GitHub CLI ist angemeldet (<code>gh auth status</code>), und dein Konto ist Admin des Ziel-Repositories.</li>
+          <li>Dieses Repository ist ausgecheckt, die Befehle laufen in seinem Hauptordner, etwa <code>~/dev/actions-runner-docker</code>.</li>
+        </ul>
+      </section>
+
+      <section id="token" aria-labelledby="token-title">
+        <h2 id="token-title"><span class="section-no">02</span>Token anlegen</h2>
+        <p>Der Runner tauscht beim Start ein Zugriffstoken gegen ein kurzlebiges Registrierungstoken und beim Stoppen gegen ein Entfernungstoken. Dafür braucht er ein Token, das genau dieses Repository verwalten darf.</p>
+        <ol>
+          <li>Unter <a href="https://github.com/settings/personal-access-tokens/new">Fine-grained personal access token erstellen</a> einen Namen wie <code>runner-franzgollhammer</code> vergeben.</li>
+          <li><strong>Expiration:</strong> kurz halten, für einen Test etwa sieben Tage.</li>
+          <li><strong>Repository access:</strong> <em>Only select repositories</em>, dann <code>franzgollhammer/franzgollhammer</code>.</li>
+          <li><strong>Permissions:</strong> <em>Repository permissions → Administration: Read and write</em>. <em>Metadata: Read</em> setzt GitHub automatisch.</li>
+          <li>Token erzeugen und kopieren. Es beginnt mit <code>github_pat_</code>.</li>
+        </ol>
+        <div class="note warning" role="note">
+          <p><strong>Nicht das Token der GitHub CLI verwenden.</strong> <code>gh auth token</code> gilt für alle deine Repositories. Ein Job kann das Token im Container lesen, und bei einem öffentlichen Repository wäre das ein Zugang zu allen deinen Repositories.</p>
+        </div>
+        <h3>Alternative für einen einzelnen Test</h3>
+        <p>Ohne eigenes Token geht es mit einem Registrierungstoken, das die GitHub CLI holt. Es gilt eine Stunde. Danach kann sich der Runner weder abmelden noch nach einem Job neu registrieren; ein ephemerer Runner schafft so ungefähr einen Job.</p>
+        <p class="shell-label">Terminal</p>
+        <pre><code>gh api -X POST repos/franzgollhammer/franzgollhammer/actions/runners/registration-token --jq .token</code></pre>
+        <p>Den Wert dann in Schritt 04 als <code>RUNNER_TOKEN</code> statt <code>ACCESS_TOKEN</code> eintragen.</p>
+      </section>
+
+      <section id="absichern" aria-labelledby="absichern-title">
+        <h2 id="absichern-title"><span class="section-no">03</span>Repository absichern</h2>
+        <p>GitHub lässt Workflows aus Fork-Pull-Requests derzeit nur bei Erstbeitragenden auf eine Freigabe warten. Mit <code>all_external_contributors</code> wartet jeder Lauf von außen, bis du ihn freigibst.</p>
+        <p class="shell-label">Terminal</p>
+        <pre><code>gh api -X PUT repos/franzgollhammer/franzgollhammer/actions/permissions/fork-pr-contributor-approval \
+  -f approval_policy=all_external_contributors
+
+gh api repos/franzgollhammer/franzgollhammer/actions/permissions/fork-pr-contributor-approval</code></pre>
+        <p>Der zweite Befehl muss <code>{"approval_policy":"all_external_contributors"}</code> liefern. Dieselbe Einstellung findest du unter <em>Settings → Actions → General → Approval for running fork pull request workflows from contributors</em>.</p>
+        <div class="note">
+          <p>Eine Freigabe schützt nur, wenn du vorher liest, was der Pull Request ändert. Gib keinen Lauf frei, der Dateien unter <code>.github/workflows/</code> ändert oder ein <code>runs-on</code> mit <code>self-hosted</code> einführt.</p>
+        </div>
+      </section>
+
+      <section id="env" aria-labelledby="env-title">
+        <h2 id="env-title"><span class="section-no">04</span>Env-Datei anlegen</h2>
+        <p>Jede Runner-Gruppe bekommt eine eigene Env-Datei. Sie enthält das Token und ist nur für dich lesbar. Git ignoriert <code>*.env</code>, und der Docker-Build sieht nur <code>entrypoint.sh</code>, also landet das Token weder im Repository noch im Image.</p>
+        <p class="shell-label">Terminal</p>
+        <pre><code>cd ~/dev/actions-runner-docker
+install -m 600 .env.example franzgollhammer.env</code></pre>
+        <p>In <code>franzgollhammer.env</code> diese Werte setzen:</p>
+        <pre><code>GITHUB_URL=https://github.com/franzgollhammer/franzgollhammer
+ACCESS_TOKEN=github_pat_…
+RUNNER_LABELS=containerized
+RUNNER_NAME_PREFIX=docker
+EPHEMERAL=true
+RUNNER_CPUS=2
+RUNNER_MEMORY=4g</code></pre>
+        <ul>
+          <li><code>EPHEMERAL=true</code>: ein Job pro Registrierung, danach ein leeres Arbeitsverzeichnis.</li>
+          <li><code>RUNNER_MEMORY=4g</code> passt in die rund 4,9 GB der OrbStack-VM. Mehrere Runner parallel brauchen kleinere Werte oder mehr VM-Speicher.</li>
+          <li><strong>Kein <code>COMPOSE_FILE</code> eintragen.</strong> <code>compose.docker.yml</code> gibt Jobs den Docker-Socket des Hosts, und das ist Root-Zugriff auf den Docker-Host. Bei einem öffentlichen Repository kommt das nicht in Frage.</li>
+        </ul>
+      </section>
+
+      <section id="starten" aria-labelledby="starten-title">
+        <h2 id="starten-title"><span class="section-no">05</span>Runner starten</h2>
+        <p>Der Projektname <code>-p franzgollhammer</code> trennt diese Runner-Gruppe von anderen. Gib beides bei jedem Compose-Befehl mit: Ohne <code>-p</code> findet Compose die Container nicht, ohne <code>--env-file</code> fehlt <code>GITHUB_URL</code>.</p>
+        <p class="shell-label">Terminal</p>
+        <pre><code>docker compose -p franzgollhammer --env-file franzgollhammer.env up -d --build
+docker compose -p franzgollhammer --env-file franzgollhammer.env logs -f</code></pre>
+        <p>Das Log meldet zuerst die Registrierung mit Labels und <code>ephemeral: true</code> und endet mit <code>Listening for Jobs</code>. Mit <kbd>Ctrl</kbd>+<kbd>C</kbd> verlässt du das Log; der Runner läuft weiter.</p>
+      </section>
+
+      <section id="pruefen" aria-labelledby="pruefen-title">
+        <h2 id="pruefen-title"><span class="section-no">06</span>Registrierung prüfen</h2>
+        <p class="shell-label">Terminal</p>
+        <pre><code>gh api repos/franzgollhammer/franzgollhammer/actions/runners \
+  --jq '.runners[] | {name, status, labels: [.labels[].name]}'</code></pre>
+        <p>Erwartet wird ein Runner namens <code>docker-&lt;Container-ID&gt;</code> mit Status <code>online</code> und den Labels <code>self-hosted</code>, <code>Linux</code>, <code>ARM64</code> und <code>containerized</code>. Auf einem x64-Server steht dort <code>X64</code> statt <code>ARM64</code>. Im Browser zeigt <em>Settings → Actions → Runners</em> dasselbe.</p>
+      </section>
+
+      <section id="workflow" aria-labelledby="workflow-title">
+        <h2 id="workflow-title"><span class="section-no">07</span>Test-Workflow anlegen</h2>
+        <p>Ein Job landet auf einem Runner, der <strong>alle</strong> Labels aus <code>runs-on</code> trägt. Der folgende Workflow gehört ins Ziel-Repository <code>franzgollhammer/franzgollhammer</code>, nicht in dieses.</p>
+        <p class="shell-label">.github/workflows/runner-smoke.yml</p>
+        <pre><code>name: Runner smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci/runner-smoke]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, containerized]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          echo "Runner: $RUNNER_NAME"
+          uname -m
+          ls -la</code></pre>
+        <ul>
+          <li><strong>Kein <code>pull_request</code>-Trigger</strong> und erst recht kein <code>pull_request_target</code>. So starten nur deine eigenen Pushes und manuelle Läufe einen Job auf dem Runner.</li>
+          <li><code>permissions: contents: read</code> beschränkt das <code>GITHUB_TOKEN</code> des Jobs auf Lesen.</li>
+          <li><code>workflow_dispatch</code> lässt sich erst starten, wenn die Datei auf dem Standard-Branch liegt. Für den ersten Test startet deshalb ein Push auf den Branch <code>ci/runner-smoke</code> den Lauf.</li>
+        </ul>
+        <p class="shell-label">Terminal</p>
+        <pre><code>gh repo clone franzgollhammer/franzgollhammer ~/dev/franzgollhammer
+cd ~/dev/franzgollhammer
+git switch -c ci/runner-smoke
+mkdir -p .github/workflows
+# runner-smoke.yml mit dem Inhalt oben anlegen
+git add .github/workflows/runner-smoke.yml
+git commit -m "Add self-hosted runner smoke test"
+git push -u origin ci/runner-smoke</code></pre>
+      </section>
+
+      <section id="beobachten" aria-labelledby="beobachten-title">
+        <h2 id="beobachten-title"><span class="section-no">08</span>Lauf beobachten</h2>
+        <p class="shell-label">Terminal</p>
+        <pre><code>gh run list -R franzgollhammer/franzgollhammer --workflow runner-smoke.yml --limit 3
+gh run watch -R franzgollhammer/franzgollhammer
+
+# im Ordner von actions-runner-docker
+docker compose -p franzgollhammer --env-file franzgollhammer.env logs -f</code></pre>
+        <p>Der Job sollte sofort starten und <code>aarch64</code> ausgeben. Danach passiert Folgendes:</p>
+        <ol>
+          <li>GitHub entfernt die Registrierung des ephemeren Runners, der Prozess im Container endet.</li>
+          <li>Compose startet denselben Container neu (<code>restart: unless-stopped</code>).</li>
+          <li>Der Entrypoint leert das Arbeitsverzeichnis, holt mit <code>ACCESS_TOKEN</code> ein neues Registrierungstoken und meldet einen frischen Runner an.</li>
+        </ol>
+        <div class="note">
+          <p><strong>Derselbe Container, nicht ein neuer.</strong> Nur das Arbeitsverzeichnis wird geleert. Was ein Job sonst im Container ändert, etwa mit <code>sudo</code> installierte Pakete, bleibt für den nächsten Job erhalten. Einen frischen Container pro Job gibt es nur mit der systemd-Unit auf Linux (Weg C).</p>
+        </div>
+        <p>Mit <code>RUNNER_TOKEN</code> statt <code>ACCESS_TOKEN</code> scheitert die Neuregistrierung, sobald das Token abgelaufen ist; der Container startet dann immer wieder neu. Nach dem Test also gleich mit Schritt 09 weitermachen.</p>
+      </section>
+
+      <section id="abbauen" aria-labelledby="abbauen-title">
+        <h2 id="abbauen-title"><span class="section-no">09</span>Abbauen</h2>
+        <p><code>down</code> stoppt den Container. Mit <code>ACCESS_TOKEN</code> meldet der Entrypoint den Runner dabei innerhalb von 90 Sekunden bei GitHub ab. Mit <code>RUNNER_TOKEN</code> bleibt er als offline stehen; dann unter <em>Settings → Actions → Runners</em> von Hand löschen.</p>
+        <p class="shell-label">Terminal</p>
+        <pre><code>docker compose -p franzgollhammer --env-file franzgollhammer.env down
+
+gh api repos/franzgollhammer/franzgollhammer/actions/runners --jq .total_count</code></pre>
+        <p>Der zweite Befehl muss <code>0</code> liefern. Danach aufräumen:</p>
+        <ul>
+          <li>Token unter <a href="https://github.com/settings/personal-access-tokens">Fine-grained personal access tokens</a> löschen, wenn kein Runner mehr folgt.</li>
+          <li>Env-Datei löschen: <code>rm franzgollhammer.env</code>.</li>
+          <li>Test-Branch im Ziel-Repository löschen: <code>git push origin --delete ci/runner-smoke</code>.</li>
+          <li>Die strengere Fork-Freigabe aus Schritt 03 kann bleiben; sie schadet auch ohne Runner nicht.</li>
+        </ul>
+      </section>
+
+      <section id="fehler" aria-labelledby="fehler-title">
+        <h2 id="fehler-title"><span class="section-no">10</span>Fehlerbehebung</h2>
+        <table>
+          <caption>Häufige Meldungen und ihre Ursache</caption>
+          <thead><tr><th scope="col">Meldung oder Symptom</th><th scope="col">Ursache und Lösung</th></tr></thead>
+          <tbody>
+            <tr><td><code>required variable GITHUB_URL is missing</code></td><td><code>--env-file franzgollhammer.env</code> fehlt im Compose-Befehl.</td></tr>
+            <tr><td><code>GitHub refused a registration token ...: Not Found</code></td><td>Falsche <code>GITHUB_URL</code>, oder dem Token fehlt <em>Administration: Read and write</em>; GitHub antwortet dann mit 404.</td></tr>
+            <tr><td><code>Resource not accessible by personal access token</code></td><td>Token ohne die Berechtigung aus Schritt 02, oder für ein anderes Repository ausgestellt.</td></tr>
+            <tr><td><code>Bad credentials</code></td><td>Token falsch kopiert, abgelaufen oder widerrufen.</td></tr>
+            <tr><td>Container endet mit Status 78</td><td>Eine Einstellung kann nicht funktionieren oder GitHub lehnt das Token ab. Das Log nennt den Grund.</td></tr>
+            <tr><td>Job bleibt in der Warteschlange</td><td>Kein Runner ist online, der alle Labels aus <code>runs-on</code> trägt. Schritt 06 wiederholen; Labels sind unabhängig von Groß- und Kleinschreibung.</td></tr>
+            <tr><td><code>warning: could not remove ...</code> beim Stoppen</td><td>GitHub war nicht erreichbar. Den Runner unter <em>Settings → Actions → Runners</em> von Hand löschen.</td></tr>
+          </tbody>
+        </table>
+        <p>Weitere Fälle stehen in der <a href="./README.md#troubleshooting">README unter Troubleshooting</a>. Wie Registrierung, Jobs und Neustarts im Detail ablaufen, erklärt der <a href="./runner-bericht.html">technische Bericht</a>.</p>
+      </section>
+
+      <footer>
+        <p>actions-runner-docker · Anleitung vom 2. November 2026<br>Alle Stile sind in dieser Datei enthalten; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
+        <a class="back-top" href="#anfang">Zum Anfang der Anleitung</a>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
