@@ -6,7 +6,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-unset COMPOSE_FILE COMPOSE_PROJECT_NAME
+# Compose prefers the shell over the env file, and a GitHub Actions job sets
+# RUNNER_NAME and GITHUB_API_URL of its own.
+unset COMPOSE_FILE COMPOSE_PROJECT_NAME GITHUB_API_URL "${!RUNNER_@}"
 env='.services.runner.environment'
 failures=0
 

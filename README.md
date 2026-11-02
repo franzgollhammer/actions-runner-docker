@@ -299,6 +299,7 @@ seconds every time a container is recreated.
 | `warning: could not remove <runner>` on stop | GitHub was unreachable within the 90 seconds a stop allows. The runner stays listed as offline until GitHub drops it (after a day for ephemeral runners, 14 days otherwise) or you delete it under **Settings → Actions → Runners**. |
 | `ACCESS_TOKEN_FILE: ... is a directory` | The file to mount did not exist, so Docker created a directory in its place. Remove it and put the token file there. |
 | `... is writable by others or not owned by root` | `RUNNER_DOCKER_WORKDIR` points into a directory other accounts can change; use one only root can. |
+| `RUNNER_NAME may only contain ...` although the env file sets no name | Compose takes variables from the shell before the env file. Inside a GitHub Actions job `RUNNER_NAME` is already set to the job runner's name; unset it, and any other `RUNNER_*` from the job, before `docker compose`. |
 | Job stays queued | No online runner carries all labels from `runs-on`. Labels are case-insensitive. |
 
 ## Development

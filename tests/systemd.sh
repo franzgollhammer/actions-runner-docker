@@ -44,7 +44,9 @@ services:
       - $root/tests/stubs/curl:/usr/local/bin/curl:ro
 EOF
 cd "$dir"
-unset COMPOSE_FILE COMPOSE_PROJECT_NAME
+# Compose prefers the shell over the env file, and a GitHub Actions job sets
+# RUNNER_NAME and GITHUB_API_URL of its own.
+unset COMPOSE_FILE COMPOSE_PROJECT_NAME GITHUB_API_URL "${!RUNNER_@}"
 
 # ExecCondition keeps the unit down while the env file is missing or incomplete.
 unit_command ExecCondition
