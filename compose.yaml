@@ -1,17 +1,20 @@
 # Self-hosted GitHub Actions runner. Configure it in .env (see .env.example).
 #
-#   docker compose up -d --build              start one runner
-#   docker compose up -d --scale runner=3     run three of them
-#   docker compose logs -f                    watch registration and jobs
-#   docker compose down                       stop and deregister
+#   docker compose pull && docker compose up -d   start one runner from the published image
+#   docker compose up -d --build                  build the image locally instead
+#   docker compose up -d --scale runner=3         run three of them
+#   docker compose logs -f                        watch registration and jobs
+#   docker compose restart                        clean restart, persistent runners keep their caches
+#   docker compose down                           stop and deregister
 #
 # One set of runners per repository or organization:
-#   docker compose -p ucsl --env-file ucsl.env up -d --build
+#   docker compose -p ucsl --env-file ucsl.env up -d
 #
 # "up" restarts the same container after each ephemeral job. For a fresh
 # container per job use systemd/actions-runner@.service (see README).
 services:
   runner:
+    image: ${RUNNER_IMAGE:-ghcr.io/franzgollhammer/actions-runner-docker:latest}
     build:
       context: .
       args:

@@ -6,7 +6,10 @@ labels and waits for jobs. On stop it deregisters again.
 
 It builds on the official runner image
 [`ghcr.io/actions/actions-runner`](https://github.com/actions/runner/pkgs/container/actions-runner)
-(Ubuntu 24.04, `linux/amd64` and `linux/arm64`) and adds only an entrypoint.
+(Ubuntu 24.04, `linux/amd64` and `linux/arm64`) and adds an entrypoint plus the
+packages workflows written for `ubuntu-latest` assume (see
+[Image baseline](#image-baseline)). CI publishes the result to
+`ghcr.io/franzgollhammer/actions-runner-docker`; hosts can pull instead of build.
 
 ## How it works
 
@@ -39,7 +42,7 @@ It builds on the official runner image
 3. Start and watch it register:
 
    ```sh
-   docker compose up -d --build
+   docker compose pull && docker compose up -d
    docker compose logs -f
    ```
 
@@ -50,6 +53,8 @@ It builds on the official runner image
    gh api repos/<owner>/<repo>/actions/runners \
      --jq '.runners[] | {name, status, labels: [.labels[].name]}'
    ```
+
+   To build the image yourself instead of pulling it: `docker compose up -d --build`.
 
 4. Send jobs to it. A job runs on a runner that has **all** labels listed in
    `runs-on`:
@@ -87,7 +92,8 @@ container with an error.
 | `DISABLE_AUTO_UPDATE` | `false` | Stop the runner from updating itself. You then have to rebuild with a current image; GitHub stops sending jobs to runners that miss an update for 30 days. |
 | `GITHUB_API_URL` | derived | API base URL, only needed for unusual Enterprise Server setups. Only `https://`. |
 | `RUNNER_CPUS`, `RUNNER_MEMORY` | `2`, `4g` | Limits per runner container. |
-| `EXTRA_APT_PACKAGES` | | apt packages baked into the image at build time. |
+| `RUNNER_IMAGE` | `ghcr.io/franzgollhammer/actions-runner-docker:latest` | Image to run; pin a tag to roll back. |
+| `EXTRA_APT_PACKAGES` | | apt packages on top of the [baseline](#image-baseline), for a local build only. |
 | `RUNNER_DOCKER_LABELS` | `docker` | The only labels of runners started with `compose.docker.yml`, instead of `RUNNER_LABELS` and the defaults. |
 
 ### Token from a file
@@ -147,8 +153,29 @@ it:
   work, a token GitHub turns down); `systemctl status actions-runner@ucsl` shows
   why.
 
-With `EPHEMERAL=false` a runner stays registered and keeps its work directory and
-tool cache between jobs. Faster, but jobs share state.
+### Persistent runners
+
+With `EPHEMERAL=false` a runner stays registered and keeps its work directory, the
+tool cache (`_work/_tool`, where `setup-node` and `setup-chrome` install), `~/.cache`
+and the checkout with its dependencies between jobs. Faster, but jobs share state.
+What survives which operation:
+
+| Operation | Keeps |
+|---|---|
+| `docker compose restart` | everything above; running jobs are cut off; hung processes die; the runner keeps its name and re-registers |
+| `docker compose up -d` after a change to `.env` or a new image | nothing: the container is recreated, the first job is cold |
+| `docker compose down` | nothing, and the runners deregister |
+
+A nightly restart from cron cleans up without losing caches and needs no compose
+files:
+
+```sh
+docker restart $(docker ps -q --filter label=com.docker.compose.project=<project>)
+```
+
+Set `RUNNER_NAME_PREFIX` to the host name, so the runner list on GitHub tells where
+a persistent runner lives. To go back to ephemeral runners, set `EPHEMERAL=true`
+and run `docker compose up -d`; the caches are gone with the next job.
 
 ## Several runners, several repositories
 
@@ -162,8 +189,8 @@ Personal accounts have no account-wide runners, so each repository gets its own
 set. Keep one env file per set and give each its own project name:
 
 ```sh
-docker compose -p ucsl --env-file ucsl.env up -d --build
-docker compose -p dotagents --env-file dotagents.env up -d --build
+docker compose -p ucsl --env-file ucsl.env up -d
+docker compose -p dotagents --env-file dotagents.env up -d
 ```
 
 Organizations can register one set for all their repositories and steer access
@@ -180,7 +207,7 @@ Docker socket. Switch a runner set to it in its env file, which works for
 # Linux host: the group that owns the socket
 echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >> .env
 echo "COMPOSE_FILE=compose.yaml:compose.docker.yml" >> .env
-docker compose up -d --build
+docker compose up -d
 ```
 
 These runners get only the labels in `RUNNER_DOCKER_LABELS` (default `docker`):
@@ -232,28 +259,34 @@ it only on a host that does nothing else, for repositories whose workflows you
 trust. Labels only route jobs; they do not stop a workflow from asking for
 `docker`. A dedicated VM per runner set is the safer boundary.
 
-## Extending the image
+## Image baseline
 
-For a few packages set `EXTRA_APT_PACKAGES` and rebuild. Cypress, for example,
-needs:
+Jobs find in the image what `ubuntu-latest` would give them and what needs root to
+install: the shared libraries for Chrome, Chromium, Cypress and Playwright (GTK,
+NSS, GBM, ALSA and friends), `xvfb`, fonts, `build-essential` for native modules,
+`python3-pip` and `python3-venv`, `gh`, `shellcheck`, `zip`, `rsync`, `file`,
+`xz-utils`, `openssh-client`. The list lives in the `Dockerfile`; it adds about
+0.9 GB to the 1.8 GB base image.
 
-```sh
-EXTRA_APT_PACKAGES="libgtk2.0-0t64 libgtk-3-0t64 libgbm-dev libnotify-dev libnss3 libxss1 libasound2t64 libxtst6 xauth xvfb"
-```
+Toolchains with a version of their own are not in the image on purpose: Node,
+Python, Chrome and the Cypress binary come from the workflows (`setup-node`,
+`setup-python`, `setup-chrome`, `cypress install`) and land in the runner's tool
+cache, so each repository keeps control of its versions. A version an action
+brings wins over the image's: it is first in `PATH`.
 
-For more, build your own image on top:
+For a local build, `EXTRA_APT_PACKAGES` adds packages; the published image ignores
+it. For more, build your own image on top:
 
 ```dockerfile
-# after: docker build -t actions-runner-docker .
-FROM actions-runner-docker
+FROM ghcr.io/franzgollhammer/actions-runner-docker:latest
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends redis-server \
     && rm -rf /var/lib/apt/lists/*
 USER runner
 ```
 
 Jobs run as user `runner`, which has passwordless `sudo`, so steps can also install
-packages themselves.
+packages themselves; in a persistent container that costs time only once.
 
 ## Security
 
@@ -279,12 +312,20 @@ packages themselves.
   systemd unit, not `docker compose up`.
 - Mount the Docker socket only as described under [Docker in jobs](#docker-in-jobs).
 
-## Updating
+## Publishing and updating
 
-Dependabot opens a pull request when a new runner image is released. After merging,
-rebuild with `docker compose up -d --build` (the systemd unit builds on every
-start). Without a rebuild the runner updates itself on start, which costs a few
-seconds every time a container is recreated.
+`.github/workflows/publish.yml` builds the image for `linux/amd64` and
+`linux/arm64` on every push to `main` that touches the `Dockerfile` or the
+entrypoint, and pushes it to `ghcr.io/franzgollhammer/actions-runner-docker` with
+the tags `latest`, the runner version from the `Dockerfile` (for example
+`2.338.2`) and `sha-<commit>`. The package is public, so pulling needs no login.
+
+Dependabot opens a pull request when a new runner image is released. After
+merging, CI publishes; hosts pick it up with `docker compose pull && docker compose
+up -d`, which recreates the containers (the systemd unit builds on every start).
+Without that, the runner updates itself on start, which costs a few seconds every
+time a container is recreated, and GitHub stops sending jobs to runners that miss
+an update for 30 days.
 
 ## Troubleshooting
 
