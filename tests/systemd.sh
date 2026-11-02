@@ -57,10 +57,12 @@ printf '%s\n' GITHUB_URL=https://github.com/owner/repo ACCESS_TOKEN=secret EPHEM
 if "${cmd[@]}" >/dev/null 2>&1; then pass "ExecCondition passes a complete env file"; else fail "ExecCondition failed a complete env file"; fi
 unit_command ExecStartPre
 "${cmd[@]}" >/dev/null 2>&1 || true
+# Build first, so the wait below measures the start, not a cold image build.
+docker compose -p "$instance" --env-file "$instance.env" build >/dev/null 2>&1
 unit_command ExecStart
 "${cmd[@]}" >run.log 2>&1 &
 start_pid=$!
-if timeout 300 bash -c 'until grep -q "run: listening" run.log; do sleep 1; done'; then
+if timeout 120 bash -c 'until grep -q "run: listening" run.log; do sleep 1; done'; then
   if grep -q -- "--ephemeral" run.log; then pass "registers an ephemeral runner despite EPHEMERAL=false"; else fail "runner is not ephemeral"; fi
   unit_command ExecStop
   started=$SECONDS
@@ -74,7 +76,8 @@ if timeout 300 bash -c 'until grep -q "run: listening" run.log; do sleep 1; done
   if [[ -z $(docker ps -aq --filter "name=^$instance-runner$") ]]; then pass "leaves no container behind"; else fail "container left behind"; fi
   echo "     (ExecStart exited $status)"
 else
-  fail "runner never started listening"
+  fail "runner never started listening; end of its log:"
+  tail -20 run.log
   kill "$start_pid" 2>/dev/null || true
 fi
 
