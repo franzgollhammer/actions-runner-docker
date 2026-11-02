@@ -76,6 +76,12 @@ if docker run --rm --entrypoint bash "$image" -c \
 else
   fail "image is missing tini, the runner, RUNNER_MANUALLY_TRAP_SIG or the Docker CLI"
 fi
+if docker run --rm --entrypoint bash "$image" -c \
+  'command -v xvfb-run gcc gh shellcheck zip rsync >/dev/null && ldconfig -p | grep -q libgtk-3.so.0 && ldconfig -p | grep -q libnss3.so' >/dev/null; then
+  pass "image has the baseline (xvfb, gcc, gh, shellcheck, zip, rsync, GTK, NSS)"
+else
+  fail "image is missing part of the baseline"
+fi
 
 echo "# configuration errors"
 expect_failure "requires GITHUB_URL" "GITHUB_URL is required"
