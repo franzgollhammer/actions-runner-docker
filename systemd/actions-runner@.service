@@ -1,0 +1,43 @@
+# An ephemeral runner in a fresh container for every job. `docker compose run
+# --rm` registers a runner, takes one job and removes the container; systemd
+# then starts the next one from the image, so what a job changes inside the
+# runner container is gone. With compose.docker.yml that no longer holds: those
+# jobs can change the host, this checkout included, and so every later job.
+#
+#   sudo cp systemd/actions-runner@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now actions-runner@ucsl     # reads ucsl.env
+#
+# The instance name is the compose project and the env file. A second runner
+# for the same repository: ln -s ucsl.env ucsl-2.env, then actions-runner@ucsl-2.
+# Docker jobs for one set: COMPOSE_FILE=compose.yaml:compose.docker.yml in its
+# env file; leave this template alone, it is shared by every instance.
+# Expects this repository in /opt/actions-runner-docker; change WorkingDirectory
+# if it lives elsewhere.
+[Unit]
+Description=Ephemeral GitHub Actions runner (%i)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/actions-runner-docker
+# A missing env file or setting fails here, and the unit then stays down
+# instead of restarting into the same error.
+ExecCondition=/usr/bin/docker compose -p %i --env-file %i.env config -q
+# A container left over from a crash would block the fixed name.
+ExecStartPre=-/usr/bin/docker rm -f %i-runner
+ExecStart=/usr/bin/docker compose -p %i --env-file %i.env run --build --rm -T -e EPHEMERAL=true --name %i-runner runner
+# compose run does not pass signals on to the container, so stop the container
+# itself; the entrypoint then stops the runner and deregisters it. After a
+# finished job there is no container left, hence the "-".
+ExecStop=-/usr/bin/docker stop -t 90 %i-runner
+Restart=always
+RestartSec=5
+# The entrypoint exits with 78 for settings that cannot work and for tokens
+# GitHub turns down; restarting would only repeat the error.
+RestartPreventExitStatus=78
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

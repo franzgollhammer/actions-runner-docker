@@ -18,16 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: ShellCheck
-        run: shellcheck entrypoint.sh tests/smoke.sh tests/stubs/*.sh
+        run: shellcheck entrypoint.sh tests/*.sh tests/stubs/*
       - name: Hadolint
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
       - name: Compose files
-        env:
-          GITHUB_URL: https://github.com/owner/repo
-          DOCKER_GID: "999"
+        run: tests/compose.sh
+      - name: systemd unit
         run: |
-          docker compose config --quiet
-          docker compose -f compose.yaml -f compose.docker.yml config --quiet
+          cp systemd/actions-runner@.service "$RUNNER_TEMP/actions-runner@ci.service"
+          systemd-analyze verify "$RUNNER_TEMP/actions-runner@ci.service"
 
   image:
     runs-on: ubuntu-latest
@@ -44,3 +43,5 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Smoke tests
         run: tests/smoke.sh actions-runner-docker:ci
+      - name: systemd unit commands
+        run: tests/systemd.sh

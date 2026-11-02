@@ -16,9 +16,10 @@ It builds on the official runner image
    directory.
 3. It starts `run.sh`. The runner opens an outbound HTTPS connection and long-polls
    GitHub for jobs; no inbound port is needed.
-4. On `docker stop` it stops the runner and removes the registration with a removal
-   token. Ephemeral runners remove themselves after their job, exit, and Docker
-   restarts the container, which registers a fresh runner.
+4. On `docker stop` it stops the runner, or a registration still in progress, and
+   removes the registration with a removal token, all within the 90 seconds compose
+   allows. Ephemeral runners remove themselves after their job and exit; see
+   [Ephemeral or persistent](#ephemeral-or-persistent) for what starts the next one.
 
 ## Quick start
 
@@ -31,7 +32,7 @@ It builds on the official runner image
 2. Configure:
 
    ```sh
-   cp .env.example .env
+   install -m 600 .env.example .env     # holds the token: yours only
    # set GITHUB_URL, ACCESS_TOKEN and RUNNER_LABELS
    ```
 
@@ -66,34 +67,85 @@ Stop with `docker compose down`; the runners deregister on the way out.
 
 ## Configuration
 
-Set these in `.env`; `compose.yaml` passes them to the container.
+Set these in `.env`; `compose.yaml` passes them to the container. Switches take
+`true`/`false` (also `1`/`0`, `yes`/`no`, `on`/`off`); anything else stops the
+container with an error.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `GITHUB_URL` | required | `https://github.com/<owner>/<repo>`, `https://github.com/<org>` or `https://github.com/enterprises/<name>`. GitHub Enterprise Server hosts work too. |
+| `GITHUB_URL` | required | `https://github.com/<owner>/<repo>`, `https://github.com/<org>` or `https://github.com/enterprises/<name>`. GitHub Enterprise Server hosts work too. Only `https://`. |
 | `ACCESS_TOKEN` | | Token used to fetch registration and removal tokens. Recommended. |
-| `RUNNER_TOKEN` | | Registration token instead of `ACCESS_TOKEN`. Expires after an hour; the runner can then neither re-register nor deregister. |
-| `ACCESS_TOKEN_FILE`, `RUNNER_TOKEN_FILE` | | Read the token from a file instead, e.g. a Docker secret. |
+| `RUNNER_TOKEN` | | Registration token instead of `ACCESS_TOKEN`. Expires after an hour, so the runner cannot deregister on stop; a restarted container keeps using its registration. |
+| `ACCESS_TOKEN_FILE`, `RUNNER_TOKEN_FILE` | | Read the token from a file instead; see [Token from a file](#token-from-a-file). |
 | `RUNNER_LABELS` | | Extra labels, comma-separated. |
 | `NO_DEFAULT_LABELS` | `false` | Drop the default labels `self-hosted`, `Linux`, `X64`/`ARM64`. |
 | `RUNNER_NAME_PREFIX` | `docker` | Runners are named `<prefix>-<container id>`. |
 | `RUNNER_NAME` | | Fixed name. Only for a single replica. |
 | `RUNNER_GROUP` | `Default` | Runner group (organizations, enterprises). |
-| `EPHEMERAL` | `true` (compose), `false` (plain `docker run`) | One job per registration, clean work directory every time. |
-| `RUNNER_WORKDIR` | `_work` | Work directory, relative to `/home/runner`. Absolute paths get a subdirectory per runner. |
+| `EPHEMERAL` | `true` (compose), `false` (plain `docker run`) | One job per registration, empty work directory for every job. |
+| `RUNNER_WORKDIR` | `_work` | Work directory, relative to `/home/runner`. Absolute paths get a subdirectory per runner, removed when the runner exits. |
 | `DISABLE_AUTO_UPDATE` | `false` | Stop the runner from updating itself. You then have to rebuild with a current image; GitHub stops sending jobs to runners that miss an update for 30 days. |
-| `GITHUB_API_URL` | derived | API base URL, only needed for unusual Enterprise Server setups. |
+| `GITHUB_API_URL` | derived | API base URL, only needed for unusual Enterprise Server setups. Only `https://`. |
 | `RUNNER_CPUS`, `RUNNER_MEMORY` | `2`, `4g` | Limits per runner container. |
 | `EXTRA_APT_PACKAGES` | | apt packages baked into the image at build time. |
+| `RUNNER_DOCKER_LABELS` | `docker` | The only labels of runners started with `compose.docker.yml`, instead of `RUNNER_LABELS` and the defaults. |
+
+### Token from a file
+
+Put each runner set's token in its own file, named after the compose project
+(`secrets/ucsl.token` for `-p ucsl`), and mount it with a `compose.override.yaml`
+(both are ignored by git):
+
+```yaml
+services:
+  runner:
+    volumes:
+      - ./secrets/${COMPOSE_PROJECT_NAME}.token:/run/secrets/access_token:ro
+```
+
+Then set `ACCESS_TOKEN_FILE=/run/secrets/access_token` in the env file. The token
+stays out of `docker inspect`. The runner user (uid 1001) must be able to read the
+file: `sudo chown 1001 secrets/ucsl.token && sudo chmod 400 secrets/ucsl.token`.
+
+Compose reads `compose.override.yaml` on its own only when no file is named with
+`-f` or `COMPOSE_FILE`. In Docker mode list it too:
+`COMPOSE_FILE=compose.yaml:compose.docker.yml:compose.override.yaml`.
 
 ## Ephemeral or persistent
 
-With `EPHEMERAL=true` each runner takes exactly one job. GitHub removes the
-registration, the container exits and restarts, its work directory is wiped and a
-new runner registers. Jobs cannot see each other's checkouts or build output.
-Everything else in the container (home directory, `/tmp`, packages a job installed
-with `sudo`) survives the restart; `docker compose up -d --force-recreate` resets
-that too.
+With `EPHEMERAL=true` each runner takes exactly one job, GitHub removes the
+registration and the container exits. What happens next depends on how you started
+it:
+
+- **`docker compose up`**: Docker restarts the same container. The work directory
+  is emptied, but everything else in the container survives, including changes a
+  job made to the runner itself: jobs run as the runner's user and have `sudo`. One
+  job can therefore affect every later one. Fine for workflows you trust; no
+  isolation between jobs.
+- **`systemd/actions-runner@.service`** (Linux): every job gets a new container
+  from the image (`docker compose run --rm`), so what a job changes inside the
+  runner container is gone. Use this when jobs must not be able to affect later
+  ones. It does not hold in [Docker mode](#docker-in-jobs): with the host's daemon
+  a job can change the host, this checkout included, and through it every later
+  container.
+
+  ```sh
+  # repository checked out in /opt/actions-runner-docker, ucsl.env next to it
+  sudo cp systemd/actions-runner@.service /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now actions-runner@ucsl
+  journalctl -fu actions-runner@ucsl
+  ```
+
+  The instance name is both the compose project and the env file (`ucsl.env`). A
+  second runner for the same repository: `ln -s ucsl.env ucsl-2.env` (with a
+  [token file](#token-from-a-file) also `ln -s ucsl.token secrets/ucsl-2.token`)
+  and enable `actions-runner@ucsl-2`. The unit always runs ephemeral runners,
+  whatever `EPHEMERAL` says, and needs `ACCESS_TOKEN`: a `RUNNER_TOKEN` lasts for
+  one registration at most. It stays down instead of restarting when the env file
+  is missing or incomplete, or the entrypoint exits with 78 (a setting that cannot
+  work, a token GitHub turns down); `systemctl status actions-runner@ucsl` shows
+  why.
 
 With `EPHEMERAL=false` a runner stays registered and keeps its work directory and
 tool cache between jobs. Faster, but jobs share state.
@@ -120,18 +172,35 @@ with runner groups.
 ## Docker in jobs
 
 Out of the box jobs cannot use Docker: `services:`, Docker container actions and
-`docker build`/`docker run` steps fail. `compose.docker.yml`
-mounts the host's Docker socket and adds the label `docker`:
+`docker build`/`docker run` steps fail. `compose.docker.yml` mounts the host's
+Docker socket. Switch a runner set to it in its env file, which works for
+`docker compose` and the systemd unit alike:
 
 ```sh
 # Linux host: the group that owns the socket
 echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >> .env
-docker compose -f compose.yaml -f compose.docker.yml up -d --build
+echo "COMPOSE_FILE=compose.yaml:compose.docker.yml" >> .env
+docker compose up -d --build
+```
+
+These runners get only the labels in `RUNNER_DOCKER_LABELS` (default `docker`):
+not `RUNNER_LABELS` and not the defaults `self-hosted`, `Linux`, `X64`, so no job
+lands on them unless it asks for them by name:
+
+```yaml
+runs-on: docker
 ```
 
 The daemon runs on the host and resolves bind mounts there, so the work directory
-moves to `/var/tmp/actions-runner/<runner name>` and is mounted at the same path in
-the container (`RUNNER_DOCKER_WORKDIR` changes the location).
+moves to `/var/lib/actions-runner/<compose project>/<runner name>`, mounted at the
+same path in the container (`RUNNER_DOCKER_WORKDIR` changes the location). Docker
+creates it as root. The runner refuses a mounted directory that other accounts can
+write to or that someone other than root owns, since they could swap a runner's
+directory for their own. Each runner's directory is readable only by the runner
+user and removed when the runner exits. Runners of one compose project share the
+parent directory; different projects do not. The runner user has uid 1001; if a
+host account has that uid too, it can read the checkouts. On Docker Desktop set
+`RUNNER_DOCKER_WORKDIR` to a shared path such as `/tmp/actions-runner/<project>`.
 
 What works and what does not with the host's daemon:
 
@@ -142,16 +211,37 @@ What works and what does not with the host's daemon:
 | `services:` | yes, but they publish their ports on the host: use `host.docker.internal:<port>`, not `localhost:<port>` |
 | `container:` jobs | no: the runner mounts its own `/home/runner/externals` into the job container, and that path exists only inside the runner container |
 
+Published service ports are open on every host interface, and Docker's rules
+bypass `ufw`. Let Docker pick the host port and read it from the job context, so
+parallel jobs do not collide:
+
+```yaml
+services:
+  db:
+    image: postgres:17
+    ports: ["5432"]
+steps:
+  - run: psql -h host.docker.internal -p ${{ job.services.db.ports['5432'] }} ...
+```
+
+and keep the host behind a firewall that drops inbound traffic.
+
 **Access to the Docker socket is root on the host.** Any workflow that runs on such
 a runner can mount `/`, start privileged containers and take over the machine. Use
 it only on a host that does nothing else, for repositories whose workflows you
-trust, and keep those runners on their own label so other jobs do not land there.
-A dedicated VM per runner set is the safer boundary.
+trust. Labels only route jobs; they do not stop a workflow from asking for
+`docker`. A dedicated VM per runner set is the safer boundary.
 
 ## Extending the image
 
-For a few packages set `EXTRA_APT_PACKAGES` and rebuild. For more, build your own
-image on top:
+For a few packages set `EXTRA_APT_PACKAGES` and rebuild. Cypress, for example,
+needs:
+
+```sh
+EXTRA_APT_PACKAGES="libgtk2.0-0t64 libgtk-3-0t64 libgbm-dev libnotify-dev libnss3 libxss1 libasound2t64 libxtst6 xauth xvfb"
+```
+
+For more, build your own image on top:
 
 ```dockerfile
 # after: docker build -t actions-runner-docker .
@@ -171,21 +261,30 @@ packages themselves.
   to. Use it only for private repositories and code you trust: on a public
   repository a pull request from a fork can run on your machine.
 - Jobs run as the same user as the runner and can use `sudo`. The entrypoint keeps
-  `ACCESS_TOKEN` out of the job environment, but a job that wants the token can
-  still read it from the container. Give the token as little as possible: limit a
-  fine-grained token to the repositories the runner serves. Repository
-  **Administration** write access is broad; the organization permission
+  `ACCESS_TOKEN` out of the job environment and off command lines, but a job that
+  wants the token can still read it from the container. Give the token as little
+  as possible: limit a fine-grained token to the repositories the runner serves.
+  Repository **Administration** write access is broad; the organization permission
   **Self-hosted runners** is much narrower, so prefer organization runners where you
   can, or hand in a short-lived `RUNNER_TOKEN`.
-- `.env` holds the token. It is ignored by git and excluded from the image build.
-- Keep `EPHEMERAL=true` unless you need caches between jobs.
+- Jobs reach everything the host reaches: its LAN or tailnet, ports other
+  containers publish, cloud metadata. Put the host where that is acceptable, for
+  example tag it in your Tailscale ACLs so it cannot open connections to your own
+  devices.
+- `.env` and every `<set>.env` hold the token. They are ignored by git and
+  excluded from the image build; keep them readable only by the account that runs
+  compose (`chmod 600 *.env`). Otherwise every host account can read the token that
+  the entrypoint keeps off process lists.
+- For jobs that must not affect each other, run ephemeral runners through the
+  systemd unit, not `docker compose up`.
 - Mount the Docker socket only as described under [Docker in jobs](#docker-in-jobs).
 
 ## Updating
 
 Dependabot opens a pull request when a new runner image is released. After merging,
-rebuild with `docker compose up -d --build`. Without a rebuild the runner updates
-itself on start, which costs a few seconds every time a container is recreated.
+rebuild with `docker compose up -d --build` (the systemd unit builds on every
+start). Without a rebuild the runner updates itself on start, which costs a few
+seconds every time a container is recreated.
 
 ## Troubleshooting
 
@@ -194,7 +293,12 @@ itself on start, which costs a few seconds every time a container is recreated.
 | `GitHub refused a registration token ...: Not Found` | Wrong `GITHUB_URL`, the token lacks the permission (GitHub answers 404 then), or a personal account used as organization URL. |
 | `... Resource not accessible by personal access token` | Fine-grained token without the permission listed under Quick start. |
 | `... Bad credentials` | Token mistyped, expired or revoked. |
-| `/var/run/docker.sock is mounted but runner cannot use it` | `DOCKER_GID` does not match the socket's group; the log prints the right value. |
+| `/var/run/docker.sock is mounted but unusable (... permission denied ...)` | `DOCKER_GID` does not match the socket's group; the message names the right value. |
+| `EPHEMERAL must be true or false, got '...'` | Typo in a switch in `.env`. |
+| Container exits with status 78 | A setting that cannot work, or a token GitHub turns down (HTTP 401/403/404, a refused `RUNNER_TOKEN`), named in the log; the systemd unit stops restarting. Exit status 1 (GitHub unavailable, rate limit, network) is retried. |
+| `warning: could not remove <runner>` on stop | GitHub was unreachable within the 90 seconds a stop allows. The runner stays listed as offline until GitHub drops it (after a day for ephemeral runners, 14 days otherwise) or you delete it under **Settings → Actions → Runners**. |
+| `ACCESS_TOKEN_FILE: ... is a directory` | The file to mount did not exist, so Docker created a directory in its place. Remove it and put the token file there. |
+| `... is writable by others or not owned by root` | `RUNNER_DOCKER_WORKDIR` points into a directory other accounts can change; use one only root can. |
 | Job stays queued | No online runner carries all labels from `runs-on`. Labels are case-insensitive. |
 
 ## Development
@@ -202,8 +306,14 @@ itself on start, which costs a few seconds every time a container is recreated.
 ```sh
 docker build -t actions-runner-docker:dev .
 tests/smoke.sh actions-runner-docker:dev
-shellcheck entrypoint.sh tests/smoke.sh tests/stubs/*.sh
+tests/compose.sh
+tests/systemd.sh
+shellcheck entrypoint.sh tests/*.sh tests/stubs/*
 ```
 
-CI runs ShellCheck, Hadolint, the compose checks, the image build and the smoke
-tests on every pull request.
+`tests/smoke.sh` and `tests/systemd.sh` replace `config.sh`, `run.sh` and `curl`
+with the stubs in `tests/stubs`, so they need no GitHub access; `SMOKE_ONLINE=1`
+adds three calls to the real API with made-up tokens. `tests/systemd.sh` runs the
+unit's own commands in a temporary copy of the checkout. The scripts need bash 4.4
+or newer and `timeout` (macOS: `brew install bash coreutils`). CI runs all of them,
+plus ShellCheck, Hadolint and `systemd-analyze verify`, on every pull request.
