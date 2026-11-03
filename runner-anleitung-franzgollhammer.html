@@ -239,10 +239,10 @@
 
     <main id="anleitung" tabindex="-1">
       <header>
-        <p class="meta">Anleitung · <time datetime="2026-11-02">2. November 2026</time></p>
+        <p class="meta">Anleitung · Stand <time datetime="2026-11-03">3. November 2026</time></p>
         <h1>Runner für franzgollhammer starten.</h1>
         <p class="lead">Schritt für Schritt einen Runner-Container aus diesem Repository für <code>franzgollhammer/franzgollhammer</code> starten: Token anlegen, registrieren, mit einem Test-Workflow prüfen und wieder abbauen.</p>
-        <p class="scope">Grundlage ist <code>main</code> nach dem Merge von Pull Request #2 (<code>fb7eed6</code>). Die Ausgangslage wurde am 2. November 2026 geprüft: Das Ziel-Repository ist öffentlich, enthält nur <code>README.md</code> und <code>assets/</code>, hat keine Workflows und keinen registrierten Runner. Die Fork-Freigabe steht auf <code>first_time_contributors</code>. Docker läuft auf dem Mac über OrbStack (arm64, 8 CPUs, rund 4,9 GB RAM).</p>
+        <p class="scope">Grundlage ist <code>main</code> nach dem Merge von Pull Request #6 (<code>8ae7047</code>); das Image kommt seit Pull Request #5 fertig aus <code>ghcr.io/franzgollhammer/ci-runner</code>, und das Repository hieß bis zum 3. November 2026 <code>actions-runner-docker</code>. Die Ausgangslage wurde am 2. November 2026 geprüft: Das Ziel-Repository ist öffentlich, enthält nur <code>README.md</code> und <code>assets/</code>, hat keine Workflows und keinen registrierten Runner. Die Fork-Freigabe steht auf <code>first_time_contributors</code>. Docker läuft auf dem Mac über OrbStack (arm64, 8 CPUs, rund 4,9 GB RAM).</p>
         <div class="note warning" role="note">
           <p class="note-title">Öffentliches Repository: nur als bewusster, begrenzter Test.</p>
           <p>Ein selbst gehosteter Runner führt aus, was die Workflows des Repositories verlangen. Bei einem öffentlichen Repository kann ein Pull Request aus einem Fork den Workflow ändern und damit Code auf deinem Rechner ausführen. Der Job hat im Container <code>sudo</code> und erreicht alles, was der Mac im Netz erreicht. Die <a href="./README.md#security">README</a> empfiehlt selbst gehostete Runner deshalb nur für private Repositories.</p>
@@ -268,6 +268,7 @@
           <li>Docker läuft: <code>docker info</code> antwortet ohne Fehler.</li>
           <li>Die GitHub CLI ist angemeldet (<code>gh auth status</code>), und dein Konto ist Admin des Ziel-Repositories.</li>
           <li>Dieses Repository ist ausgecheckt, die Befehle laufen in seinem Hauptordner, etwa <code>~/dev/ci-runner</code>.</li>
+          <li>Zum Pullen des Images ist keine Anmeldung nötig; das Paket ist öffentlich. Entpackt belegt es rund 3 GB.</li>
         </ul>
       </section>
 
@@ -307,7 +308,7 @@ gh api repos/franzgollhammer/franzgollhammer/actions/permissions/fork-pr-contrib
 
       <section id="env" aria-labelledby="env-title">
         <h2 id="env-title"><span class="section-no">04</span>Env-Datei anlegen</h2>
-        <p>Jede Runner-Gruppe bekommt eine eigene Env-Datei. Sie enthält das Token und ist nur für dich lesbar. Git ignoriert <code>*.env</code>, und der Docker-Build sieht nur <code>entrypoint.sh</code>, also landet das Token weder im Repository noch im Image.</p>
+        <p>Jede Runner-Gruppe bekommt eine eigene Env-Datei. Sie enthält das Token und ist nur für dich lesbar. Git ignoriert <code>*.env</code>, ein lokaler Docker-Build sieht nur <code>entrypoint.sh</code>, und das gepullte Image kennt die Datei gar nicht, also landet das Token weder im Repository noch im Image.</p>
         <p class="shell-label">Terminal</p>
         <pre><code>cd ~/dev/ci-runner
 install -m 600 .env.example franzgollhammer.env</code></pre>
@@ -330,8 +331,10 @@ RUNNER_MEMORY=4g</code></pre>
         <h2 id="starten-title"><span class="section-no">05</span>Runner starten</h2>
         <p>Der Projektname <code>-p franzgollhammer</code> trennt diese Runner-Gruppe von anderen. Gib beides bei jedem Compose-Befehl mit: Ohne <code>-p</code> findet Compose die Container nicht, ohne <code>--env-file</code> fehlt <code>GITHUB_URL</code>.</p>
         <p class="shell-label">Terminal</p>
-        <pre><code>docker compose -p franzgollhammer --env-file franzgollhammer.env up -d --build
+        <pre><code>docker compose -p franzgollhammer --env-file franzgollhammer.env pull
+docker compose -p franzgollhammer --env-file franzgollhammer.env up -d
 docker compose -p franzgollhammer --env-file franzgollhammer.env logs -f</code></pre>
+        <p><code>pull</code> holt <code>ghcr.io/franzgollhammer/ci-runner:latest</code> fertig gebaut für <code>arm64</code>, mit der Baseline für <code>ubuntu-latest</code>-Workflows. Selbst bauen statt pullen geht weiter mit <code>up -d --build</code>.</p>
         <p>Das Log meldet zuerst die Registrierung mit Labels und <code>ephemeral: true</code> und endet mit <code>Listening for Jobs</code>. Mit <kbd>Ctrl</kbd>+<kbd>C</kbd> verlässt du das Log; der Runner läuft weiter.</p>
       </section>
 
@@ -414,6 +417,7 @@ gh api repos/franzgollhammer/franzgollhammer/actions/runners --jq .total_count</
         <ul>
           <li>Token unter <a href="https://github.com/settings/personal-access-tokens">Fine-grained personal access tokens</a> löschen, wenn kein Runner mehr folgt.</li>
           <li>Env-Datei löschen: <code>rm franzgollhammer.env</code>.</li>
+          <li>Image entfernen, wenn kein Runner mehr folgt: <code>docker image rm ghcr.io/franzgollhammer/ci-runner:latest</code>.</li>
           <li>Test-Branch im Ziel-Repository löschen: <code>git push origin --delete ci/runner-smoke</code>.</li>
           <li>Die strengere Fork-Freigabe aus Schritt 03 kann bleiben; sie schadet auch ohne Runner nicht.</li>
         </ul>
@@ -438,7 +442,7 @@ gh api repos/franzgollhammer/franzgollhammer/actions/runners --jq .total_count</
       </section>
 
       <footer>
-        <p>ci-runner · Anleitung vom 2. November 2026<br>Alle Stile sind in dieser Datei enthalten; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
+        <p>ci-runner · Anleitung, Stand 3. November 2026 (Erstfassung 2. November 2026)<br>Alle Stile sind in dieser Datei enthalten; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
         <a class="back-top" href="#anfang">Zum Anfang der Anleitung</a>
       </footer>
     </main>
