@@ -238,10 +238,10 @@
 
     <main id="bericht" tabindex="-1">
       <header>
-        <p class="meta">Technischer Bericht · <time datetime="2026-11-02">2. November 2026</time></p>
+        <p class="meta">Technischer Bericht · Stand <time datetime="2026-11-03">3. November 2026</time></p>
         <h1>Docker-Runner verstehen.</h1>
         <p class="lead">Vom Image-Bau über die Registrierung bei GitHub bis zum Job-Ende: So arbeiten die selbst gehosteten GitHub-Actions-Runner dieses Repositories.</p>
-        <p class="scope">Grundlage ist <code>main</code> mit dem Merge von Pull Request #1 (<code>93e7445</code>), also der Stand nach den Review-Fixes. Dieser Bericht erklärt die Konfiguration im Repository; er ist kein Nachweis über ein aktuell laufendes Deployment.</p>
+        <p class="scope">Grundlage ist <code>main</code> mit dem Merge von Pull Request #6 (<code>8ae7047</code>): das veröffentlichte Image mit <code>ubuntu-latest</code>-Baseline aus Pull Request #5 und die Umbenennung des Repositories von <code>actions-runner-docker</code> in <code>ci-runner</code> sind enthalten. Die Erstfassung vom 2. November 2026 beschrieb den Stand nach Pull Request #1 (<code>93e7445</code>). Dieser Bericht erklärt die Konfiguration im Repository; er ist kein Nachweis über ein aktuell laufendes Deployment.</p>
         <div class="note">
           <p><strong>GitHub verteilt die Arbeit. Dein Host führt sie aus.</strong> Der Runner verbindet sich mit GitHub, übernimmt passende Jobs und meldet Ergebnisse zurück. Docker stellt die Laufzeitumgebung bereit. Das Entrypoint-Script automatisiert Registrierung und Abmeldung.</p>
         </div>
@@ -266,11 +266,12 @@
           <caption>Die zentralen Dateien</caption>
           <thead><tr><th scope="col">Datei</th><th scope="col">Verantwortung</th></tr></thead>
           <tbody>
-            <tr><td><a href="./Dockerfile">Dockerfile</a></td><td>Basisimage, Zusatzpakete, Benutzer und Entrypoint</td></tr>
+            <tr><td><a href="./Dockerfile">Dockerfile</a></td><td>Basisimage, <code>ubuntu-latest</code>-Baseline, Benutzer und Entrypoint</td></tr>
             <tr><td><a href="./compose.yaml">compose.yaml</a></td><td>Containerstart, Umgebung, Ressourcenlimits, Neustart und Logs</td></tr>
             <tr><td><a href="./entrypoint.sh">entrypoint.sh</a></td><td>Eingabeprüfung, Token-Anforderung, Registrierung, Ausführung und Abmeldung</td></tr>
             <tr><td><a href="./compose.docker.yml">compose.docker.yml</a></td><td>Optionale Verbindung zum Docker-Daemon des Hosts</td></tr>
             <tr><td><a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a></td><td>Optionaler Linux-Dienst, der pro Job einen frischen Container startet</td></tr>
+            <tr><td><a href="./.github/workflows/publish.yml">.github/workflows/publish.yml</a></td><td>Baut das Image für <code>linux/amd64</code> und <code>linux/arm64</code> und veröffentlicht es nach GHCR</td></tr>
           </tbody>
         </table>
       </section>
@@ -279,11 +280,11 @@
         <h2 id="image-title"><span class="section-no">02</span>Vom Image zum laufenden Container</h2>
         <p>Das Dockerfile verwendet das offizielle Image <code>ghcr.io/actions/actions-runner</code>. Die aktuelle Datei fixiert Version <code>2.338.2</code> zusätzlich über einen SHA-256-Digest. Damit ist die verwendete Image-Basis eindeutig festgelegt.</p>
         <pre><code>FROM ghcr.io/actions/actions-runner:2.338.2@sha256:759a1d94a15b05941aba5196974ff43fe15b4cbba29b694b35cbc32a1166b232</code></pre>
-        <p>Das Basisimage enthält Ubuntu 24.04, den GitHub-Runner, Git, <code>curl</code>, <code>jq</code>, Docker CLI und Buildx. Der Benutzer <code>runner</code> hat UID <code>1001</code> und passwortloses <code>sudo</code>. Dein Dockerfile ergänzt <code>tini</code>, optionale APT-Pakete und das eigene Entrypoint-Script. <a href="#quelle-image">[1]</a></p>
+        <p>Das Basisimage enthält Ubuntu 24.04, den GitHub-Runner, Git, <code>curl</code>, <code>jq</code>, Docker CLI und Buildx. Der Benutzer <code>runner</code> hat UID <code>1001</code> und passwortloses <code>sudo</code>. Das Dockerfile ergänzt <code>tini</code>, die unten beschriebene Baseline, optionale APT-Pakete für einen lokalen Bau und das eigene Entrypoint-Script. <a href="#quelle-image">[1]</a></p>
         <p><strong>Ein Image ist eine Vorlage; ein Container ist eine Instanz dieser Vorlage.</strong> Mehrere Container können dasselbe Image verwenden. Jeder Container besitzt eine eigene beschreibbare Dateisystemschicht, solange er nicht ausdrücklich gemeinsame Hostverzeichnisse oder Volumes einbindet.</p>
-        <p>Ein Start mit folgendem Befehl baut das Image und erstellt beziehungsweise aktualisiert den Compose-Dienst:</p>
-        <pre><code>docker compose up -d --build</code></pre>
-        <p><code>--build</code> baut unter Nutzung des vorhandenen Build-Caches. <code>-d</code> startet im Hintergrund. Die Werte aus <code>.env</code> werden für die Variablenersetzung in Compose verwendet und die dort aufgeführten Umgebungsvariablen an den Container übergeben.</p>
+        <p>Das fertige Image liegt öffentlich unter <code>ghcr.io/franzgollhammer/ci-runner</code>. Der Standardstart holt es und erstellt beziehungsweise aktualisiert den Compose-Dienst:</p>
+        <pre><code>docker compose pull &amp;&amp; docker compose up -d</code></pre>
+        <p><code>pull</code> lädt das in <code>compose.yaml</code> eingetragene Image, standardmäßig <code>ghcr.io/franzgollhammer/ci-runner:latest</code>; <code>RUNNER_IMAGE</code> wählt einen anderen Tag, etwa um auf eine frühere Version zurückzugehen. <code>-d</code> startet im Hintergrund. Die Werte aus <code>.env</code> werden für die Variablenersetzung in Compose verwendet und die dort aufgeführten Umgebungsvariablen an den Container übergeben. Wer das Image selbst bauen will, etwa mit <code>EXTRA_APT_PACKAGES</code>, startet stattdessen mit <code>docker compose up -d --build</code>; <code>--build</code> nutzt den vorhandenen Build-Cache.</p>
         <p>Die Startkette lautet:</p>
         <pre><code>tini (PID 1)
   └─ /usr/local/bin/entrypoint.sh
@@ -293,7 +294,9 @@
         <div class="note">
           <p><strong>Linux bleibt Linux.</strong> Auf einem Mac läuft dieses Image in einer Linux-VM. Der Runner meldet sich deshalb als Linux-Runner. Native macOS-Tests benötigen einen eigenen macOS-Runner.</p>
         </div>
-        <p>Die Werkzeugausstattung entspricht außerdem nicht automatisch einem kompletten GitHub-gehosteten <code>ubuntu-latest</code>-System. Benötigte Node-, Python-, Browser- oder Compiler-Abhängigkeiten müssen das Image oder der jeweilige Workflow bereitstellen.</p>
+        <h3>Die Baseline ersetzt das Nachinstallieren</h3>
+        <p>Seit Pull Request #5 enthält das Image, was Workflows für <code>ubuntu-latest</code> voraussetzen und was dort Root zum Installieren bräuchte: die Bibliotheken für Chrome, Chromium, Cypress und Playwright (GTK, NSS, GBM, ALSA), <code>xvfb</code> und Schriften, <code>build-essential</code> für native Module, <code>python3-pip</code> und <code>python3-venv</code>, <code>gh</code>, <code>shellcheck</code>, <code>zip</code>, <code>rsync</code>, <code>file</code>, <code>xz-utils</code> und <code>openssh-client</code>. Die Liste steht im Dockerfile; sie kostet rund 0,9 GB zusätzlich zum 1,8 GB großen Basisimage.</p>
+        <p>Werkzeuge mit eigener Versionswahl bleiben absichtlich draußen: Node, Python, Chrome und das Cypress-Binary holen die Workflows über <code>setup-node</code>, <code>setup-python</code>, <code>setup-chrome</code> oder <code>cypress install</code> in den Tool-Cache des Runners. So behält jedes Repository seine Versionen, und eine von einer Action mitgebrachte Version steht im <code>PATH</code> vor der des Images. Weitere Pakete kommen über ein eigenes Image auf Basis von <code>ghcr.io/franzgollhammer/ci-runner:latest</code>, über <code>EXTRA_APT_PACKAGES</code> beim lokalen Bau oder per <code>sudo</code> im Step; in einem persistenten Container kostet das nur einmal Zeit.</p>
       </section>
 
       <section id="registrierung" aria-labelledby="registrierung-title">
@@ -405,6 +408,16 @@ Authorization: Bearer &lt;ACCESS_TOKEN&gt;</code></pre>
           </tbody>
         </table>
         <p>Mit <code>EPHEMERAL=false</code> wartet der Runner nach einem Job auf den nächsten. Registrierung und Arbeitsverzeichnis bleiben während dieser Laufzeit bestehen. Beim tatsächlichen Containerneustart erfolgt normalerweise eine neue Registrierung; ohne Verwaltungstoken wird eine vorhandene Registrierung weiterverwendet. Ein absolutes Arbeitsverzeichnis wird auch im persistenten Modus bei jedem Ende des Entrypoints entfernt.</p>
+        <p>Ein persistenter Runner behält zwischen den Jobs auch den Tool-Cache (<code>_work/_tool</code>, wohin <code>setup-node</code> und <code>setup-chrome</code> installieren), <code>~/.cache</code> und den Checkout mit seinen Abhängigkeiten. Jobs starten dadurch schneller, teilen aber Zustand. Ein nächtliches <code>docker restart</code> der Projektcontainer räumt hängende Prozesse ab, ohne die Caches zu verlieren. <code>RUNNER_NAME_PREFIX</code> auf den Hostnamen gesetzt zeigt in der Runner-Liste von GitHub, wo ein persistenter Runner läuft.</p>
+        <table>
+          <caption>Was ein persistenter Runner über welche Operation behält</caption>
+          <thead><tr><th scope="col">Operation</th><th scope="col">Bleibt erhalten</th></tr></thead>
+          <tbody>
+            <tr><td><code>docker compose restart</code></td><td>Tool-Cache, <code>~/.cache</code> und Checkout; laufende Jobs brechen ab, hängende Prozesse enden, der Runner registriert sich unter gleichem Namen neu</td></tr>
+            <tr><td><code>docker compose up -d</code> nach geänderter <code>.env</code> oder neuem Image</td><td>Nichts: Der Container wird neu erzeugt, der erste Job startet kalt</td></tr>
+            <tr><td><code>docker compose down</code></td><td>Nichts; die Runner melden sich ab</td></tr>
+          </tbody>
+        </table>
         <p><code>docker compose up -d --force-recreate</code> erstellt einen neuen Container und setzt damit dessen beschreibbare Schicht zurück. Bind-Mounts und Host-Docker-Zustand bleiben bestehen. Nach harten Abbrüchen können alte Runner-Unterverzeichnisse auf dem Host zurückbleiben.</p>
         <p>Ein fehlgeschlagener Test ist außerdem nicht gleichbedeutend mit einem defekten Runner. Das Testergebnis wird in GitHub gemeldet; der ephemere Lebenszyklus kann anschließend regulär weitergehen.</p>
         <h3>Ein neuer Container pro Job über systemd</h3>
@@ -493,8 +506,8 @@ steps:
         <p>Drei Runner erlauben bis zu drei gleichzeitig zugewiesene Jobs, soweit Workflow-Abhängigkeiten und GitHub-Regeln das zulassen. Ein einzelner Job bleibt auf einem Runner; darin können Tests intern mehrere Prozesse starten.</p>
         <p>Mit den Standardlimits können diese drei Runner zusammen CPU-Zeit entsprechend sechs CPUs und je bis zu <code>4g</code> RAM beanspruchen. Zusätzliche Docker-Container kommen gegebenenfalls hinzu. Compose vergrößert oder verkleinert den Pool nicht selbst anhand der Jobwarteschlange.</p>
         <p>Persönliche Repositories erhalten getrennte Runner-Sets. Eigene Compose-Projektnamen trennen die Dienste und Netzwerke:</p>
-        <pre><code>docker compose -p ucsl --env-file ucsl.env up -d --build</code></pre>
-        <pre><code>docker compose -p dotagents --env-file dotagents.env up -d --build</code></pre>
+        <pre><code>docker compose -p ucsl --env-file ucsl.env up -d</code></pre>
+        <pre><code>docker compose -p dotagents --env-file dotagents.env up -d</code></pre>
         <p>Organisationen können einen gemeinsamen Pool registrieren und Repository-Zugriff über Runner-Gruppen steuern. Ein fest gesetztes <code>RUNNER_NAME</code> darf beim Skalieren nicht für alle Replikate identisch sein.</p>
         <h3>Sauberes Stoppen und Abmelden</h3>
         <p>Bei <code>docker compose down</code> sendet Docker ein Stoppsignal. <code>tini</code> reicht es an den Entrypoint weiter. Das Script signalisiert den Runner, wartet auf dessen Prozessende und versucht anschließend, eine noch vorhandene Registrierung zu entfernen. Kommt der Stopp während einer Registrierung, beendet das Script <code>config.sh</code> und räumt danach genauso auf.</p>
@@ -506,7 +519,9 @@ ACTIONS_RUNNER_INPUT_TOKEN=&lt;remove-token&gt; ./config.sh remove</code></pre>
         <p><code>restart: unless-stopped</code> startet selbstständig beendete Container erneut. Ein ausdrücklich gestoppter Container bleibt gestoppt. <a href="#quelle-neustart">[9]</a></p>
         <h3>Runner- und Image-Updates haben getrennte Aufgaben</h3>
         <p>Standardmäßig darf sich die Runner-Software selbst aktualisieren. Mit <code>DISABLE_AUTO_UPDATE=true</code> entfällt dies; dann muss ein ausreichend aktuelles Image bereitgestellt werden. GitHub verlangt bei ausgeschaltetem Selbstupdate Aktualisierung innerhalb von 30 Tagen nach einem neuen Release und kann kritische Sicherheitsupdates früher zur Voraussetzung weiterer Jobs machen. <a href="#quelle-runner">[4]</a></p>
-        <p>Dependabot prüft wöchentlich das Basisimage und die GitHub Actions dieses Repositories. Nach einer übernommenen Dockerfile-Änderung muss das Image neu gebaut und der Dienst entsprechend aktualisiert werden. Ein Selbstupdate des Runners pflegt keine Betriebssystempakete und eigenen Tools.</p>
+        <p>Dependabot prüft wöchentlich das Basisimage und die GitHub Actions dieses Repositories. Nach dem Merge eines solchen Pull Requests baut <a href="./.github/workflows/publish.yml">.github/workflows/publish.yml</a> das Image für <code>linux/amd64</code> und <code>linux/arm64</code> und veröffentlicht es unter <code>ghcr.io/franzgollhammer/ci-runner</code> mit den Tags <code>latest</code>, der Runner-Version aus dem Dockerfile (etwa <code>2.338.2</code>) und <code>sha-&lt;commit&gt;</code>. Der Workflow läuft bei Pushes auf <code>main</code>, die Dockerfile, Entrypoint, <code>.dockerignore</code> oder den Workflow selbst ändern, sonst von Hand über <code>workflow_dispatch</code>. Das Paket ist öffentlich; Pullen braucht keine Anmeldung.</p>
+        <p>Hosts übernehmen ein neues Image mit <code>docker compose pull &amp;&amp; docker compose up -d</code>; das erzeugt die Container neu. Der systemd-Dienst baut dagegen bei jedem Start selbst (<code>run --build</code>) und braucht keinen Pull. Ein über <code>RUNNER_IMAGE</code> festgelegter Tag erlaubt den Rückweg auf eine frühere Version. Ein Selbstupdate des Runners pflegt keine Betriebssystempakete und eigenen Tools; es kostet außerdem bei jedem neu erzeugten Container einige Sekunden, wenn das Image hinterherhinkt.</p>
+        <p>Bis zum 3. November 2026 hieß das Repository <code>actions-runner-docker</code>. GitHub leitet die alte Adresse um; das alte Paket <code>ghcr.io/franzgollhammer/actions-runner-docker</code> behält seine Tags, bekommt aber keine neuen. Hosts wechseln, indem sie den neuen Namen pullen.</p>
         <h3>Fehlersuche beginnt bei Logs, Status und Labels</h3>
         <p><code>docker compose logs -f</code> zeigt Start- und Registrierungsprobleme. Die Runner-Verwaltung auf GitHub zeigt Erreichbarkeit, Labels und Beschäftigung. Der konkrete Actions-Job zeigt Step-Ausgaben und Testergebnisse. Compose rotiert Containerlogs über den Treiber <code>json-file</code> mit bis zu drei Dateien zu je <code>10m</code>.</p>
         <table>
@@ -555,7 +570,8 @@ RUNNER_MEMORY=4g</code></pre>
             <tr><td><code>EPHEMERAL</code></td><td><code>true</code> mit Compose; ohne gesetzten Wert bei direktem Containerstart <code>false</code></td></tr>
             <tr><td><code>DISABLE_AUTO_UPDATE</code></td><td><code>false</code>; bei <code>true</code> muss die Runner-Version über Imagepflege aktuell bleiben</td></tr>
             <tr><td><code>RUNNER_CPUS</code>, <code>RUNNER_MEMORY</code></td><td><code>2</code> und <code>4g</code>; Limits pro Runner-Container</td></tr>
-            <tr><td><code>EXTRA_APT_PACKAGES</code></td><td>Zusätzliche, durch Leerzeichen getrennte Pakete beim Image-Bau; Änderungen benötigen einen Build</td></tr>
+            <tr><td><code>RUNNER_IMAGE</code></td><td><code>ghcr.io/franzgollhammer/ci-runner:latest</code>; zu startendes Image, ein fester Tag erlaubt den Rückweg</td></tr>
+            <tr><td><code>EXTRA_APT_PACKAGES</code></td><td>Zusätzliche, durch Leerzeichen getrennte Pakete über der Baseline; nur beim lokalen Bau mit <code>--build</code>, das veröffentlichte Image ignoriert sie</td></tr>
             <tr><td><code>GITHUB_API_URL</code></td><td>Optionaler API-Basispfad für besondere Enterprise-Konfigurationen</td></tr>
             <tr><td><code>COMPOSE_FILE</code></td><td>Mit <code>compose.yaml:compose.docker.yml</code> schaltet die Env-Datei eines Runner-Sets das Docker-Override ein, auch für den systemd-Dienst</td></tr>
             <tr><td><code>DOCKER_GID</code></td><td>Erforderliche Socket-Gruppen-ID bei Verwendung des Docker-Overrides</td></tr>
@@ -575,7 +591,7 @@ RUNNER_MEMORY=4g</code></pre>
 
       <section id="quellen" aria-labelledby="quellen-title">
         <h2 id="quellen-title"><span class="section-no">10</span>Quellen und Aussagegrenzen</h2>
-        <p>Projektbezogene Aussagen wurden mit den Dateien dieses Repositorys abgeglichen: <a href="./Dockerfile">Dockerfile</a>, <a href="./entrypoint.sh">entrypoint.sh</a>, <a href="./compose.yaml">compose.yaml</a>, <a href="./compose.docker.yml">compose.docker.yml</a>, <a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a>, <a href="./README.md">README.md</a> und <a href="./.env.example">.env.example</a>, jeweils im Stand von <code>main</code> nach dem Merge <code>93e7445</code>. Allgemeines GitHub- und Docker-Verhalten wurde anhand offizieller Quellen geprüft.</p>
+        <p>Projektbezogene Aussagen wurden mit den Dateien dieses Repositorys abgeglichen: <a href="./Dockerfile">Dockerfile</a>, <a href="./entrypoint.sh">entrypoint.sh</a>, <a href="./compose.yaml">compose.yaml</a>, <a href="./compose.docker.yml">compose.docker.yml</a>, <a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a>, <a href="./README.md">README.md</a>, <a href="./.env.example">.env.example</a> und <a href="./.github/workflows/publish.yml">.github/workflows/publish.yml</a>, jeweils im Stand von <code>main</code> nach dem Merge <code>8ae7047</code>. Allgemeines GitHub- und Docker-Verhalten wurde anhand offizieller Quellen geprüft.</p>
         <ol class="source-list">
           <li id="quelle-image"><a href="https://github.com/actions/runner/blob/v2.338.2/images/Dockerfile">GitHub actions/runner: offizielles Image-Dockerfile, Version 2.338.2</a></li>
           <li id="quelle-api"><a href="https://docs.github.com/en/rest/actions/self-hosted-runners">GitHub REST API: Registrierung und Entfernung selbst gehosteter Runner</a></li>
@@ -588,13 +604,14 @@ RUNNER_MEMORY=4g</code></pre>
           <li id="quelle-neustart"><a href="https://docs.docker.com/engine/containers/start-containers-automatically/">Docker: Neustartregeln und manuelles Stoppen</a></li>
         </ol>
         <h3>Was die Projekt-CI prüft</h3>
-        <p>Der Workflow <a href="./.github/workflows/ci.yml">.github/workflows/ci.yml</a> führt ShellCheck, Hadolint, <code>systemd-analyze verify</code>, einen Image-Bau und drei Testskripte aus. <a href="./tests/smoke.sh">tests/smoke.sh</a> lässt den Entrypoint mit Stellvertretern für <code>config.sh</code>, <code>run.sh</code> und <code>curl</code> vollständig durchlaufen, auch Stopp, Abmeldung, Token-Dateien, Exit-Status und Arbeitsverzeichnisse. <a href="./tests/compose.sh">tests/compose.sh</a> prüft die gerenderten Compose-Dateien. <a href="./tests/systemd.sh">tests/systemd.sh</a> führt die Befehle der Dienstvorlage selbst aus. Ohne echte GitHub-Zugangsdaten belegen diese Tests keine reale Registrierung.</p>
+        <p>Der Workflow <a href="./.github/workflows/ci.yml">.github/workflows/ci.yml</a> führt in den Jobs <code>lint</code> und <code>image</code> ShellCheck, Hadolint, <code>systemd-analyze verify</code>, einen Image-Bau und drei Testskripte aus; die Veröffentlichung übernimmt getrennt davon <a href="./.github/workflows/publish.yml">publish.yml</a>. <a href="./tests/smoke.sh">tests/smoke.sh</a> lässt den Entrypoint mit Stellvertretern für <code>config.sh</code>, <code>run.sh</code> und <code>curl</code> vollständig durchlaufen, auch Stopp, Abmeldung, Token-Dateien, Exit-Status und Arbeitsverzeichnisse. <a href="./tests/compose.sh">tests/compose.sh</a> prüft die gerenderten Compose-Dateien. <a href="./tests/systemd.sh">tests/systemd.sh</a> führt die Befehle der Dienstvorlage selbst aus. Ohne echte GitHub-Zugangsdaten belegen diese Tests keine reale Registrierung.</p>
         <p>Für die Aktualisierung dieses Berichts am 2. November 2026 liefen deshalb zusätzlich Live-Tests gegen ein privates Testrepository, auf Docker Desktop mit <code>arm64</code>: Registrierung mit Token in der Umgebung, ein Job mit Checkout und <code>sudo</code> ohne Token in der Jobumgebung, Abmeldung beim Stopp; ephemere Runner über den Befehl der Dienstvorlage, einschließlich <code>ExecStop</code>; Runner im Docker-Override mit <code>runs-on: docker</code>, Docker-Container-Action, Bind-Mount und Service über einen zufälligen Hostport. Zwei Fehler fielen dabei auf und sind behoben: Eine Abmeldung brach nach dem Entfernungstoken ab, und ein Stopp während einer hängenden Registrierung wartete bis zum harten Abbruch. Bei zeitweise gestörter Verbindung zu GitHub endete ein Stopp innerhalb von 17 Sekunden mit der Warnung, dass die Abmeldung nicht möglich war. Ein Linux-Host mit Host-Socket, Organisations- und Enterprise-Ziele sowie GitHub Enterprise Server wurden nicht live geprüft.</p>
+        <p>Die Fassung vom 3. November 2026 ergänzt Baseline, Veröffentlichung nach GHCR, den Pull-Weg und die Umbenennung anhand der Dateien im Repository. Neue Live-Tests liefen dafür nicht; das veröffentlichte Image lief am 2. und 3. November 2026 als persistenter Runner auf einem x64-Host für ein privates Repository, womit Pull-Weg und Baseline (ShellCheck, Playwright-Chromium) in der Praxis bestätigt sind.</p>
         <p>Spätere Änderungen an Images, Skripten oder GitHub-Verhalten können eine Aktualisierung dieses Berichts erforderlich machen.</p>
       </section>
 
       <footer>
-        <p>ci-runner · Technischer Bericht vom 2. November 2026<br>Alle Stile und Diagramme sind in dieser Datei enthalten. Externe Links dienen ausschließlich als Quellen; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
+        <p>ci-runner · Technischer Bericht, Stand 3. November 2026 (Erstfassung 2. November 2026)<br>Alle Stile und Diagramme sind in dieser Datei enthalten. Externe Links dienen ausschließlich als Quellen; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
         <a class="back-top" href="#anfang">Zum Anfang des Berichts</a>
       </footer>
     </main>
