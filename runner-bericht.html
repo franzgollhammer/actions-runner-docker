@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Technischer Bericht über den vollständigen Lebenszyklus der Docker-basierten GitHub-Actions-Runner in actions-runner-docker.">
-  <title>Docker-Runner verstehen · actions-runner-docker</title>
+  <meta name="description" content="Technischer Bericht über den vollständigen Lebenszyklus der Docker-basierten GitHub-Actions-Runner in ci-runner.">
+  <title>Docker-Runner verstehen · ci-runner</title>
   <style>
     :root {
       --page: #f4f5f3;
@@ -216,7 +216,7 @@
   <div class="layout" id="anfang">
     <aside class="sidebar" aria-label="Berichtsnavigation">
       <div class="sidebar-inner">
-        <p class="project"><strong>actions-runner-docker</strong><span>Architektur und Betrieb</span></p>
+        <p class="project"><strong>ci-runner</strong><span>Architektur und Betrieb</span></p>
         <nav class="toc" aria-labelledby="toc-title">
           <h2 class="toc-title" id="toc-title">Inhalt</h2>
           <ol>
@@ -411,9 +411,9 @@ Authorization: Bearer &lt;ACCESS_TOKEN&gt;</code></pre>
         <p>Die Vorlage <a href="./systemd/actions-runner@.service">systemd/actions-runner@.service</a> verwendet einen einmaligen Compose-Aufruf. Der Container nimmt einen Job an und wird danach durch <code>--rm</code> entfernt. <code>-e EPHEMERAL=true</code> erzwingt diesen Modus, auch wenn die Env-Datei etwas anderes sagt:</p>
         <pre><code>docker compose -p &lt;instanz&gt; --env-file &lt;instanz&gt;.env \
   run --build --rm -T -e EPHEMERAL=true --name &lt;instanz&gt;-runner runner</code></pre>
-        <p>systemd startet nach fünf Sekunden den nächsten Durchlauf aus dem Image. Dadurch werden Home-Dateien, <code>/tmp</code>, nachinstallierte Pakete und jede Änderung am Runner selbst in der beschreibbaren Containerschicht verworfen. Host-Bind-Mounts, Images, Volumes und Host-Build-Caches bleiben davon unabhängig. Mit dem Docker-Override gilt die Trennung deshalb nicht: Ein Job kann über den Socket den Host verändern, auch das Repository unter <code>/opt/actions-runner-docker</code>, aus dem jeder spätere Container gebaut wird.</p>
+        <p>systemd startet nach fünf Sekunden den nächsten Durchlauf aus dem Image. Dadurch werden Home-Dateien, <code>/tmp</code>, nachinstallierte Pakete und jede Änderung am Runner selbst in der beschreibbaren Containerschicht verworfen. Host-Bind-Mounts, Images, Volumes und Host-Build-Caches bleiben davon unabhängig. Mit dem Docker-Override gilt die Trennung deshalb nicht: Ein Job kann über den Socket den Host verändern, auch das Repository unter <code>/opt/ci-runner</code>, aus dem jeder spätere Container gebaut wird.</p>
         <p><code>docker compose run</code> reicht Stoppsignale nicht an den Container weiter. Der Dienst stoppt den benannten Container deshalb selbst mit <code>ExecStop=docker stop -t 90</code>; der Entrypoint meldet den Runner dann ab. Vor jedem Start prüft <code>ExecCondition</code> mit <code>docker compose config -q</code>, ob Env-Datei und Pflichtwerte vorhanden sind. Fehlen sie, bleibt der Dienst gestoppt statt alle fünf Sekunden in denselben Fehler zu laufen. Dasselbe bewirkt <code>RestartPreventExitStatus=78</code> für Einstellungen, die nicht funktionieren können, und für Token, die GitHub ablehnt.</p>
-        <p>Die Dienstvorlage erwartet das Repository unter <code>/opt/actions-runner-docker</code> und eine zum Instanznamen passende Env-Datei. Ein anderer Ablageort benötigt ein angepasstes <code>WorkingDirectory</code>. Der Dienst braucht <code>ACCESS_TOKEN</code>, weil ein <code>RUNNER_TOKEN</code> höchstens für eine Registrierung reicht. Docker-Jobs schaltet die Env-Datei einer Instanz mit <code>COMPOSE_FILE=compose.yaml:compose.docker.yml</code> ein; die gemeinsame Vorlage bleibt unverändert. Ein eventuell nach einem Absturz zurückgebliebener Container mit dem festen Instanznamen wird vor dem Start entfernt.</p>
+        <p>Die Dienstvorlage erwartet das Repository unter <code>/opt/ci-runner</code> und eine zum Instanznamen passende Env-Datei. Ein anderer Ablageort benötigt ein angepasstes <code>WorkingDirectory</code>. Der Dienst braucht <code>ACCESS_TOKEN</code>, weil ein <code>RUNNER_TOKEN</code> höchstens für eine Registrierung reicht. Docker-Jobs schaltet die Env-Datei einer Instanz mit <code>COMPOSE_FILE=compose.yaml:compose.docker.yml</code> ein; die gemeinsame Vorlage bleibt unverändert. Ein eventuell nach einem Absturz zurückgebliebener Container mit dem festen Instanznamen wird vor dem Start entfernt.</p>
       </section>
 
       <section id="docker" aria-labelledby="docker-title">
@@ -594,7 +594,7 @@ RUNNER_MEMORY=4g</code></pre>
       </section>
 
       <footer>
-        <p>actions-runner-docker · Technischer Bericht vom 2. November 2026<br>Alle Stile und Diagramme sind in dieser Datei enthalten. Externe Links dienen ausschließlich als Quellen; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
+        <p>ci-runner · Technischer Bericht vom 2. November 2026<br>Alle Stile und Diagramme sind in dieser Datei enthalten. Externe Links dienen ausschließlich als Quellen; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
         <a class="back-top" href="#anfang">Zum Anfang des Berichts</a>
       </footer>
     </main>

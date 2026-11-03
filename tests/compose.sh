@@ -35,11 +35,11 @@ check "passes RUNNER_TOKEN_FILE" "$env.RUNNER_TOKEN_FILE == \"/run/secrets/runne
 check "passes RUNNER_LABELS" "$env.RUNNER_LABELS == \"containerized\"" "$config"
 check "is ephemeral by default" "$env.EPHEMERAL == \"true\"" "$config"
 check "leaves time to deregister on stop" '.services.runner.stop_grace_period == "1m30s"' "$config"
-check "runs the published image" '.services.runner.image == "ghcr.io/franzgollhammer/actions-runner-docker:latest"' "$config"
+check "runs the published image" '.services.runner.image == "ghcr.io/franzgollhammer/ci-runner:latest"' "$config"
 check "can still build locally" '.services.runner.build.context != null' "$config"
 
-config=$(RUNNER_IMAGE=ghcr.io/franzgollhammer/actions-runner-docker:2.338.2 render -f compose.yaml)
-check "takes a pinned image from RUNNER_IMAGE" '.services.runner.image == "ghcr.io/franzgollhammer/actions-runner-docker:2.338.2"' "$config"
+config=$(RUNNER_IMAGE=ghcr.io/franzgollhammer/ci-runner:2.338.2 render -f compose.yaml)
+check "takes a pinned image from RUNNER_IMAGE" '.services.runner.image == "ghcr.io/franzgollhammer/ci-runner:2.338.2"' "$config"
 
 config=$(RUNNER_LABELS=containerized DOCKER_GID=999 render -f compose.yaml -f compose.docker.yml)
 check "gives the Docker set only its own labels" \
