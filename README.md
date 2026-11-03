@@ -1,4 +1,4 @@
-# actions-runner-docker
+# ci-runner
 
 A Docker container that runs a self-hosted GitHub Actions runner. On start it
 registers itself with a repository, organization or enterprise, applies your
@@ -9,7 +9,7 @@ It builds on the official runner image
 (Ubuntu 24.04, `linux/amd64` and `linux/arm64`) and adds an entrypoint plus the
 packages workflows written for `ubuntu-latest` assume (see
 [Image baseline](#image-baseline)). CI publishes the result to
-`ghcr.io/franzgollhammer/actions-runner-docker`; hosts can pull instead of build.
+`ghcr.io/franzgollhammer/ci-runner`; hosts can pull instead of build.
 
 ## How it works
 
@@ -92,7 +92,7 @@ container with an error.
 | `DISABLE_AUTO_UPDATE` | `false` | Stop the runner from updating itself. You then have to rebuild with a current image; GitHub stops sending jobs to runners that miss an update for 30 days. |
 | `GITHUB_API_URL` | derived | API base URL, only needed for unusual Enterprise Server setups. Only `https://`. |
 | `RUNNER_CPUS`, `RUNNER_MEMORY` | `2`, `4g` | Limits per runner container. |
-| `RUNNER_IMAGE` | `ghcr.io/franzgollhammer/actions-runner-docker:latest` | Image to run; pin a tag to roll back. |
+| `RUNNER_IMAGE` | `ghcr.io/franzgollhammer/ci-runner:latest` | Image to run; pin a tag to roll back. |
 | `EXTRA_APT_PACKAGES` | | apt packages on top of the [baseline](#image-baseline), for a local build only. |
 | `RUNNER_DOCKER_LABELS` | `docker` | The only labels of runners started with `compose.docker.yml`, instead of `RUNNER_LABELS` and the defaults. |
 
@@ -136,7 +136,7 @@ it:
   container.
 
   ```sh
-  # repository checked out in /opt/actions-runner-docker, ucsl.env next to it
+  # repository checked out in /opt/ci-runner, ucsl.env next to it
   sudo cp systemd/actions-runner@.service /etc/systemd/system/
   sudo systemctl daemon-reload
   sudo systemctl enable --now actions-runner@ucsl
@@ -278,7 +278,7 @@ For a local build, `EXTRA_APT_PACKAGES` adds packages; the published image ignor
 it. For more, build your own image on top:
 
 ```dockerfile
-FROM ghcr.io/franzgollhammer/actions-runner-docker:latest
+FROM ghcr.io/franzgollhammer/ci-runner:latest
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends redis-server \
     && rm -rf /var/lib/apt/lists/*
@@ -316,9 +316,14 @@ packages themselves; in a persistent container that costs time only once.
 
 `.github/workflows/publish.yml` builds the image for `linux/amd64` and
 `linux/arm64` on every push to `main` that touches the `Dockerfile` or the
-entrypoint, and pushes it to `ghcr.io/franzgollhammer/actions-runner-docker` with
+entrypoint, and pushes it to `ghcr.io/franzgollhammer/ci-runner` with
 the tags `latest`, the runner version from the `Dockerfile` (for example
 `2.338.2`) and `sha-<commit>`. The package is public, so pulling needs no login.
+
+Until 2026-11-03 the repository was called `actions-runner-docker`. GitHub redirects
+the old repository URL. The old image `ghcr.io/franzgollhammer/actions-runner-docker`
+keeps the tags it has but receives no new ones; hosts switch by pulling the new name
+(the compose default, or `RUNNER_IMAGE`).
 
 Dependabot opens a pull request when a new runner image is released. After
 merging, CI publishes; hosts pick it up with `docker compose pull && docker compose
@@ -346,8 +351,8 @@ an update for 30 days.
 ## Development
 
 ```sh
-docker build -t actions-runner-docker:dev .
-tests/smoke.sh actions-runner-docker:dev
+docker build -t ci-runner:dev .
+tests/smoke.sh ci-runner:dev
 tests/compose.sh
 tests/systemd.sh
 shellcheck entrypoint.sh tests/*.sh tests/stubs/*

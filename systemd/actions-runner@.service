@@ -12,7 +12,7 @@
 # for the same repository: ln -s ucsl.env ucsl-2.env, then actions-runner@ucsl-2.
 # Docker jobs for one set: COMPOSE_FILE=compose.yaml:compose.docker.yml in its
 # env file; leave this template alone, it is shared by every instance.
-# Expects this repository in /opt/actions-runner-docker; change WorkingDirectory
+# Expects this repository in /opt/ci-runner; change WorkingDirectory
 # if it lives elsewhere.
 [Unit]
 Description=Ephemeral GitHub Actions runner (%i)
@@ -21,7 +21,7 @@ After=docker.service network-online.target
 Wants=network-online.target
 
 [Service]
-WorkingDirectory=/opt/actions-runner-docker
+WorkingDirectory=/opt/ci-runner
 # A missing env file or setting fails here, and the unit then stays down
 # instead of restarting into the same error.
 ExecCondition=/usr/bin/docker compose -p %i --env-file %i.env config -q

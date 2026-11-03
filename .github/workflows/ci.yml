@@ -38,10 +38,10 @@ jobs:
         with:
           context: .
           load: true
-          tags: actions-runner-docker:ci
+          tags: ci-runner:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke tests
-        run: tests/smoke.sh actions-runner-docker:ci
+        run: tests/smoke.sh ci-runner:ci
       - name: systemd unit commands
         run: tests/systemd.sh

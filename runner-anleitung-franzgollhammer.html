@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Schritt-für-Schritt-Anleitung: einen Runner-Container aus actions-runner-docker für franzgollhammer/franzgollhammer starten, testen und abbauen.">
-  <title>Runner für franzgollhammer · actions-runner-docker</title>
+  <meta name="description" content="Schritt-für-Schritt-Anleitung: einen Runner-Container aus ci-runner für franzgollhammer/franzgollhammer starten, testen und abbauen.">
+  <title>Runner für franzgollhammer · ci-runner</title>
   <style>
     :root {
       --page: #f4f5f3;
@@ -217,7 +217,7 @@
   <div class="layout" id="anfang">
     <aside class="sidebar" aria-label="Navigation der Anleitung">
       <div class="sidebar-inner">
-        <p class="project"><strong>actions-runner-docker</strong><span>Runner für franzgollhammer</span></p>
+        <p class="project"><strong>ci-runner</strong><span>Runner für franzgollhammer</span></p>
         <nav class="toc" aria-labelledby="toc-title">
           <h2 class="toc-title" id="toc-title">Schritte</h2>
           <ol>
@@ -267,7 +267,7 @@
         <ul>
           <li>Docker läuft: <code>docker info</code> antwortet ohne Fehler.</li>
           <li>Die GitHub CLI ist angemeldet (<code>gh auth status</code>), und dein Konto ist Admin des Ziel-Repositories.</li>
-          <li>Dieses Repository ist ausgecheckt, die Befehle laufen in seinem Hauptordner, etwa <code>~/dev/actions-runner-docker</code>.</li>
+          <li>Dieses Repository ist ausgecheckt, die Befehle laufen in seinem Hauptordner, etwa <code>~/dev/ci-runner</code>.</li>
         </ul>
       </section>
 
@@ -309,7 +309,7 @@ gh api repos/franzgollhammer/franzgollhammer/actions/permissions/fork-pr-contrib
         <h2 id="env-title"><span class="section-no">04</span>Env-Datei anlegen</h2>
         <p>Jede Runner-Gruppe bekommt eine eigene Env-Datei. Sie enthält das Token und ist nur für dich lesbar. Git ignoriert <code>*.env</code>, und der Docker-Build sieht nur <code>entrypoint.sh</code>, also landet das Token weder im Repository noch im Image.</p>
         <p class="shell-label">Terminal</p>
-        <pre><code>cd ~/dev/actions-runner-docker
+        <pre><code>cd ~/dev/ci-runner
 install -m 600 .env.example franzgollhammer.env</code></pre>
         <p>In <code>franzgollhammer.env</code> diese Werte setzen:</p>
         <pre><code>GITHUB_URL=https://github.com/franzgollhammer/franzgollhammer
@@ -389,7 +389,7 @@ git push -u origin ci/runner-smoke</code></pre>
         <pre><code>gh run list -R franzgollhammer/franzgollhammer --workflow runner-smoke.yml --limit 3
 gh run watch -R franzgollhammer/franzgollhammer
 
-# im Ordner von actions-runner-docker
+# im Ordner von ci-runner
 docker compose -p franzgollhammer --env-file franzgollhammer.env logs -f</code></pre>
         <p>Der Job sollte sofort starten und <code>aarch64</code> ausgeben. Danach passiert Folgendes:</p>
         <ol>
@@ -438,7 +438,7 @@ gh api repos/franzgollhammer/franzgollhammer/actions/runners --jq .total_count</
       </section>
 
       <footer>
-        <p>actions-runner-docker · Anleitung vom 2. November 2026<br>Alle Stile sind in dieser Datei enthalten; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
+        <p>ci-runner · Anleitung vom 2. November 2026<br>Alle Stile sind in dieser Datei enthalten; das Lesen benötigt keine Netzwerkverbindung. Für einen Ausdruck kann die Druckfunktion des Browsers verwendet werden.</p>
         <a class="back-top" href="#anfang">Zum Anfang der Anleitung</a>
       </footer>
     </main>

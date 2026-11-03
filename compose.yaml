@@ -14,7 +14,7 @@
 # container per job use systemd/actions-runner@.service (see README).
 services:
   runner:
-    image: ${RUNNER_IMAGE:-ghcr.io/franzgollhammer/actions-runner-docker:latest}
+    image: ${RUNNER_IMAGE:-ghcr.io/franzgollhammer/ci-runner:latest}
     build:
       context: .
       args:
