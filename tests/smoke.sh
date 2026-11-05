@@ -86,6 +86,8 @@ fi
 echo "# configuration errors"
 expect_failure "requires GITHUB_URL" "GITHUB_URL is required"
 expect_status "exits 78 for a setting that cannot work" 78
+expect_failure "refuses persistent workspace settings for ephemeral runners" "CLEAN_WORKDIR_ON_EXIT=false requires EPHEMERAL=false" \
+  -e GITHUB_URL="$url" -e RUNNER_TOKEN=x -e EPHEMERAL=true -e CLEAN_WORKDIR_ON_EXIT=false
 expect_failure "rejects a malformed GITHUB_URL" "GITHUB_URL must be" \
   -e GITHUB_URL=github.com/owner/repo -e ACCESS_TOKEN=x
 expect_failure "rejects plain http" "GITHUB_URL must be https" \
@@ -204,6 +206,18 @@ if [[ ! -e $work/smoke ]]; then pass "creates nothing in it for a setting that c
 run_container "${stubbed[@]}" "${with_curl[@]}" -v "$work:$work" -e RUNNER_WORKDIR="$work" -e RUNNER_NAME=smoke \
   -e GITHUB_URL="$url" -e ACCESS_TOKEN=invalid
 if [[ ! -e $work/smoke ]]; then pass "removes it after a failed registration"; else fail "left $work/smoke behind after a failed registration"; fi
+run_container "${stubbed[@]}" -v "$work:$work" -e RUNNER_WORKDIR="$work" -e RUNNER_NAME=smoke \
+  -e GITHUB_URL="$url" -e RUNNER_TOKEN=x -e EPHEMERAL=false -e CLEAN_WORKDIR_ON_EXIT=false
+expect_success "runs with host-managed workspace cleanup"
+if [[ -d $work/smoke ]]; then pass "preserves persistent workspace on stop"; else fail "removed persistent workspace"; fi
+# Reuse the registration after a container restart without deleting its checkout.
+as_root "touch '$work/smoke/retained'"
+run_container "${stubbed[@]}" -v "$work:$work" -e RUNNER_WORKDIR="$work" -e RUNNER_NAME=smoke \
+  -e GITHUB_URL="$url" -e RUNNER_TOKEN=expired -e EPHEMERAL=false -e CLEAN_WORKDIR_ON_EXIT=false \
+  --entrypoint bash -- -c 'touch .runner && exec /usr/local/bin/entrypoint.sh'
+expect_success "restarts a persistent runner without a fresh registration token"
+if [[ -f $work/smoke/retained ]]; then pass "restart keeps the workspace"; else fail "restart removed checkout"; fi
+as_root "rm -f '$work/smoke/retained' && rmdir '$work/smoke'"
 as_root "chmod 777 '$work'"
 run_container "${stubbed[@]}" -v "$work:$work" -e RUNNER_WORKDIR="$work" -e RUNNER_NAME=smoke \
   -e GITHUB_URL="$url" -e RUNNER_TOKEN=x

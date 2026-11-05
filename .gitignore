@@ -5,3 +5,5 @@
 secrets/
 # Local additions such as a token file mount.
 compose.override.yaml
+.claude/plans/
+__pycache__/

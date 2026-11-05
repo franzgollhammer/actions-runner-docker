@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: ShellCheck
-        run: shellcheck entrypoint.sh tests/*.sh tests/stubs/*
+        run: shellcheck entrypoint.sh host/install.sh tests/*.sh tests/stubs/*
+      - name: Host lifecycle regressions
+        run: python3 -B -m unittest discover -s tests -p 'test_*.py' -v
       - name: Hadolint
         uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
       - name: Compose files
@@ -27,6 +30,8 @@ jobs:
         run: |
           cp systemd/actions-runner@.service "$RUNNER_TEMP/actions-runner@ci.service"
           systemd-analyze verify "$RUNNER_TEMP/actions-runner@ci.service"
+          sudo install -m 755 host/ci_host.py /usr/local/sbin/ci-host
+          systemd-analyze verify host/systemd/ci-runner.slice host/systemd/ci-runner*.service host/systemd/ci-runner*.timer
 
   image:
     runs-on: ubuntu-latest

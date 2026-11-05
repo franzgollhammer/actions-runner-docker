@@ -1,0 +1,14 @@
+[Unit]
+Description=Start the UCSL repository runner
+Wants=network-online.target
+Requires=docker.service user@1001.service
+After=network-online.target docker.service user@1001.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ci-host start
+TimeoutStartSec=infinity
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

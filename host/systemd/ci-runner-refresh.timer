@@ -1,0 +1,11 @@
+[Unit]
+Description=Recreate the UCSL runner daily at 03:00 Vienna time
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Europe/Vienna
+Persistent=true
+AccuracySec=1s
+RandomizedDelaySec=0
+
+[Install]
+WantedBy=timers.target
