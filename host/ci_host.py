@@ -213,7 +213,8 @@ class Controller:
         container = self.container()
         if not container or not container["State"]["Running"]:
             return False
-        result = self.docker("host", "top", self.name, "-eo", "comm")
+        # Docker needs the PID column to filter host ps output to this container.
+        result = self.docker("host", "top", self.name, "-eo", "pid,comm")
         return any("Runner.Worker" in row for row in result.stdout.splitlines())
 
     def guard(self):

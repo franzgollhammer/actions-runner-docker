@@ -231,6 +231,23 @@ cid=$(docker run -d "${stubbed[@]}" "${with_curl[@]}" -e STUB_WAIT=1 -e GITHUB_U
   -e ACCESS_TOKEN=secret -e RUNNER_NAME=smoke "$image")
 # shellcheck disable=SC2016 # $1 belongs to the inner bash
 if timeout 30 bash -c 'until docker logs "$1" 2>&1 | grep -q "run: listening"; do sleep 0.5; done' _ "$cid"; then
+  if python3 - "$cid" <<'PY'
+import importlib.util
+import json
+import pathlib
+import sys
+spec = importlib.util.spec_from_file_location("ci_host", pathlib.Path("host/ci_host.py"))
+host = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(host)
+config = json.loads(pathlib.Path("host/host.example.json").read_text())
+config["runner_name"] = sys.argv[1]
+assert not host.Controller(config).workers(), "stubbed listener must not be reported as an active job"
+PY
+  then
+    pass "host controller can inspect worker processes through the real Docker daemon"
+  else
+    fail "host controller could not inspect Docker worker processes"
+  fi
   start=$SECONDS
   docker stop -t 30 "$cid" >/dev/null
   took=$((SECONDS - start))
