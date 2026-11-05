@@ -13,6 +13,9 @@ on:
       - .dockerignore
       - .github/workflows/publish.yml
   workflow_dispatch:
+  schedule:
+    # 00:17 CET / 01:17 CEST, before the host's 03:00 Vienna maintenance.
+    - cron: '17 23 * * *'
 
 permissions:
   contents: read
@@ -53,13 +56,41 @@ jobs:
             type=raw,value=${{ steps.runner.outputs.version }}
             type=sha
 
-      - name: Build and push
+      - name: Build candidate
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ghcr.io/${{ github.repository }}:build-${{ github.run_id }}-${{ github.run_attempt }}
           labels: ${{ steps.meta.outputs.labels }}
+          no-cache: ${{ github.event_name == 'schedule' }}
+          pull: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Test the candidate before publishing stable tags
+        env:
+          CANDIDATE: ghcr.io/${{ github.repository }}:build-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          docker pull "$CANDIDATE"
+          tests/smoke.sh "$CANDIDATE"
+          python3 -B -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Publish tested manifest as stable tags
+        if: github.ref == 'refs/heads/main'
+        env:
+          CANDIDATE: ghcr.io/${{ github.repository }}:build-${{ github.run_id }}-${{ github.run_attempt }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          args=()
+          while IFS= read -r tag; do
+            test -z "$tag" || args+=(--tag "$tag")
+          done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "$CANDIDATE"
+
+      - name: Record candidate
+        env:
+          CANDIDATE: ghcr.io/${{ github.repository }}:build-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          printf 'Tested Linux amd64 candidate: `%s`\n' "$CANDIDATE" >> "$GITHUB_STEP_SUMMARY"

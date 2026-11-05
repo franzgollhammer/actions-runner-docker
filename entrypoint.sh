@@ -116,7 +116,7 @@ finish() {
   deregister
   # A work directory on the host outlives the container, and the next
   # container gets a new name, so nothing would use it again.
-  if [[ $work_dir == /* ]]; then
+  if [[ $work_dir == /* && $clean_workdir == true ]]; then
     remove_work_dir || log "warning: could not remove $work_path"
   fi
 }
@@ -151,10 +151,15 @@ runner_token=$(secret RUNNER_TOKEN)
 [[ -n $access_token || -n $runner_token ]] ||
   invalid "set ACCESS_TOKEN or ACCESS_TOKEN_FILE (recommended), or RUNNER_TOKEN or RUNNER_TOKEN_FILE"
 
-ephemeral=false no_default_labels=false disable_update=false
+ephemeral=false no_default_labels=false disable_update=false clean_workdir=true
 flag EPHEMERAL false && ephemeral=true
 flag NO_DEFAULT_LABELS false && no_default_labels=true
 flag DISABLE_AUTO_UPDATE false && disable_update=true
+if ! flag CLEAN_WORKDIR_ON_EXIT true; then clean_workdir=false; fi
+# External lifecycle management is only meaningful for a persistent runner.
+if [[ $ephemeral == true && $clean_workdir == false ]]; then
+  invalid "CLEAN_WORKDIR_ON_EXIT=false requires EPHEMERAL=false"
+fi
 
 runner_name=${RUNNER_NAME:-${RUNNER_NAME_PREFIX:-docker}-$HOSTNAME}
 [[ $runner_name =~ ^[A-Za-z0-9._-]+$ ]] || invalid "RUNNER_NAME may only contain letters, digits, '.', '_' and '-'"

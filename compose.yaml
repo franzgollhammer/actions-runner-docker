@@ -39,6 +39,7 @@ services:
       EPHEMERAL: ${EPHEMERAL:-true}
       NO_DEFAULT_LABELS: ${NO_DEFAULT_LABELS:-false}
       DISABLE_AUTO_UPDATE: ${DISABLE_AUTO_UPDATE:-false}
+      CLEAN_WORKDIR_ON_EXIT: ${CLEAN_WORKDIR_ON_EXIT:-true}
     logging:
       driver: json-file
       options:

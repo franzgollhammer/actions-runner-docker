@@ -72,6 +72,11 @@ Stop with `docker compose down`; the runners deregister on the way out.
 
 ## Configuration
 
+For the dedicated 4 GB Hetzner UCSL host, see [Host lifecycle](host/README.md).
+It uses one persistent repository runner, a separate rootless job daemon, a
+shared resource budget and a draining nightly reset. The generic Compose setup
+below keeps its existing defaults.
+
 Set these in `.env`; `compose.yaml` passes them to the container. Switches take
 `true`/`false` (also `1`/`0`, `yes`/`no`, `on`/`off`); anything else stops the
 container with an error.
@@ -89,6 +94,7 @@ container with an error.
 | `RUNNER_GROUP` | `Default` | Runner group (organizations, enterprises). |
 | `EPHEMERAL` | `true` (compose), `false` (plain `docker run`) | One job per registration, empty work directory for every job. |
 | `RUNNER_WORKDIR` | `_work` | Work directory, relative to `/home/runner`. Absolute paths get a subdirectory per runner, removed when the runner exits. |
+| `CLEAN_WORKDIR_ON_EXIT` | `true` | Set to `false` only with `EPHEMERAL=false` when an external host controller owns absolute workspace cleanup. Container restarts then preserve the workspace. |
 | `DISABLE_AUTO_UPDATE` | `false` | Stop the runner from updating itself. You then have to rebuild with a current image; GitHub stops sending jobs to runners that miss an update for 30 days. |
 | `GITHUB_API_URL` | derived | API base URL, only needed for unusual Enterprise Server setups. Only `https://`. |
 | `RUNNER_CPUS`, `RUNNER_MEMORY` | `2`, `4g` | Limits per runner container. |

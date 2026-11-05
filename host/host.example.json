@@ -1,0 +1,10 @@
+{
+  "hostname": "fg-hetzner-1",
+  "repository": "franzgollhammer/ucsl-app",
+  "runner_name": "ucsl-hetzner-1",
+  "ci_user": "ci-ucsl",
+  "ci_uid": 1001,
+  "image": "ghcr.io/franzgollhammer/ci-runner:latest",
+  "github_token_file": "/etc/ci-runner/github.token",
+  "allow_host_wide_reset": true
+}

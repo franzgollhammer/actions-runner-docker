@@ -1,0 +1,11 @@
+[Unit]
+Description=Shared resource budget for UCSL runner and rootless Docker
+
+[Slice]
+MemoryAccounting=yes
+CPUAccounting=yes
+MemoryHigh=2560M
+MemoryMax=2816M
+MemorySwapMax=2048M
+CPUQuota=200%
+TasksMax=4096
