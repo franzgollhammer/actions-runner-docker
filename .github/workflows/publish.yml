@@ -92,4 +92,5 @@ jobs:
       - name: Record candidate
         env:
           CANDIDATE: ghcr.io/${{ github.repository }}:build-${{ github.run_id }}-${{ github.run_attempt }}
-        run: printf 'Tested Linux amd64 candidate: `%s`\n' "$CANDIDATE" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          printf 'Tested Linux amd64 candidate: `%s`\n' "$CANDIDATE" >> "$GITHUB_STEP_SUMMARY"
