@@ -104,6 +104,8 @@ class Lifecycle(unittest.TestCase):
         self.c.workers, self.c.container = Mock(return_value=False), Mock(return_value=None)
         self.c.archive, self.c.deregister, self.c.command = Mock(), Mock(), Mock()
         self.c.mounted = Mock(return_value=True)
+        self.c.workspace_volume = Mock(return_value={"Mountpoint": "/managed/work"})
+        self.c.check_workspace_mount = Mock()
         self.c.inventory = Mock(return_value={x: {"containers": [], "images": []} for x in ("host", "jobs")})
         def docker(engine, *args, **kwargs):
             out = "id1\nid2" if args == ("ps", "-aq") else ""
@@ -119,6 +121,40 @@ class Lifecycle(unittest.TestCase):
         for engine in ("jobs", "host"):
             self.c.docker.assert_any_call(engine, "image", "prune", "--all", "--force", timeout=600)
             self.c.docker.assert_any_call(engine, "builder", "prune", "--all", "--force", timeout=600)
+
+    def test_unmanaged_same_name_volume_stops_recovery_before_any_cleanup(self):
+        self.c.workers = Mock(return_value=False)
+        self.c.archive, self.c.deregister, self.c.command = Mock(), Mock(), Mock()
+        volume = {"Driver": "local", "Options": None, "Labels": None}
+        self.c.docker = Mock(side_effect=[subprocess.CompletedProcess([], 0, "ci-ucsl-work\n", ""),
+                                        subprocess.CompletedProcess([], 0, json.dumps([volume]), "")])
+        with self.assertRaisesRegex(host.Error, "unmanaged workspace volume"):
+            self.c.purge()
+        self.c.archive.assert_not_called()
+        self.c.command.assert_not_called()
+        self.c.deregister.assert_not_called()
+        self.c.save.assert_not_called()
+
+    def test_refresh_waits_for_lock_then_reads_the_new_state(self):
+        config = json.loads((pathlib.Path(__file__).parents[1] / "host/host.example.json").read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            config_path = root / "config.json"
+            config_path.write_text(json.dumps(config))
+            (root / "state.json").write_text(json.dumps({"image": OLD}))
+            observed = []
+            def acquired_lock(_fd, flags):
+                self.assertEqual(flags, host.fcntl.LOCK_EX)  # blocking refresh
+                host.atomic_json(root / "state.json", {"image": NEW})
+            def execute(controller, _action, _dry_run):
+                observed.append(controller.state["image"])
+            with patch.object(host, "STATE_ROOT", root), \
+                 patch.object(host, "private_file"), \
+                 patch.object(host.sys, "argv", ["ci-host", "refresh", "--config", str(config_path)]), \
+                 patch.object(host.fcntl, "flock", side_effect=acquired_lock), \
+                 patch.object(host.Controller, "execute", execute):
+                self.assertEqual(host.main(), 0)
+            self.assertEqual(observed, [NEW])
 
     def test_bootstrap_refuses_existing_old_runner(self):
         self.c.container = Mock(return_value=None)

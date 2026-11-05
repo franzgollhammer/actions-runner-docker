@@ -21,6 +21,8 @@ import time
 import urllib.error
 import urllib.request
 
+STATE_ROOT = pathlib.Path("/var/lib/ci-runner")
+
 
 class Error(RuntimeError):
     pass
@@ -110,13 +112,11 @@ class Controller:
         self.route = "hetzner-ci"
         self.volume = "ci-ucsl-work"
         self.workspace = pathlib.Path("/srv/ci-runner/workspace")
-        self.root = pathlib.Path("/var/lib/ci-runner")
+        self.root = STATE_ROOT
         self.state_path = self.root / "state.json"
         self.clock = time.monotonic
         self.sleep = time.sleep
         self.state = {}
-        if self.state_path.exists():
-            self.state = json.loads(self.state_path.read_text())
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", self.repo):
             raise Error("Invalid repository")
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", self.name):
@@ -127,6 +127,12 @@ class Controller:
             raise Error("CI user must have a dedicated unprivileged UID")
         if not re.fullmatch(r"ghcr\.io/[a-z0-9_.-]+/[a-z0-9_.-]+:[A-Za-z0-9_.-]+", self.image):
             raise Error("Use an explicit GHCR image tag")
+
+    def load_state(self):
+        # Read only after acquiring the lifecycle lock: another controller can
+        # finish its refresh while this process is waiting for that lock.
+        if self.state_path.exists():
+            self.state = json.loads(self.state_path.read_text())
 
     def save(self, **changes):
         self.state.update(changes)
@@ -298,10 +304,36 @@ class Controller:
     def mounted(self):
         return self.command("/usr/bin/mountpoint", "-q", str(self.workspace), check=False).returncode == 0
 
+    def workspace_volume(self):
+        names = self.docker("host", "volume", "ls", "--format", "{{.Name}}").stdout.splitlines()
+        if self.volume not in names:
+            return None
+        volume = json.loads(self.docker("host", "volume", "inspect", self.volume).stdout)[0]
+        if volume.get("Driver") != "local" or volume.get("Options"):
+            raise Error("Workspace must be an ordinary host-managed local Docker volume")
+        if (volume.get("Labels") or {}).get("io.ci-runner.managed") != "ucsl":
+            raise Error("Refusing to adopt or remove an unmanaged workspace volume")
+        return volume
+
+    def check_workspace_mount(self, volume):
+        source = pathlib.Path(volume["Mountpoint"])
+        if source.resolve() != source or not source.is_dir():
+            raise Error("Workspace volume has an unsafe mountpoint")
+        if self.mounted():
+            current = self.workspace.stat()
+            if (current.st_dev, current.st_ino) != (source.stat().st_dev, source.stat().st_ino):
+                raise Error("A different filesystem is mounted at the workspace path")
+        return source
+
     def purge(self):
         """Only called after routing withdrawal and drain, including during recovery."""
         if self.workers():
             raise Error("Worker still present; refusing cleanup")
+        volume = self.workspace_volume()
+        if volume:
+            self.check_workspace_mount(volume)
+        elif self.mounted():
+            raise Error("Workspace is mounted without its managed volume; refusing cleanup")
         self.archive()
         container = self.container()
         if container and container["State"]["Running"]:
@@ -323,8 +355,7 @@ class Controller:
             self.docker(engine, "image", "prune", "--all", "--force", timeout=600)
         if self.mounted():
             self.command("/usr/bin/umount", str(self.workspace))
-        volumes = self.docker("host", "volume", "ls", "--format", "{{.Name}}").stdout.splitlines()
-        if self.volume in volumes:
+        if self.workspace_volume():
             self.docker("host", "volume", "rm", self.volume)
         inventory = self.inventory()
         if any(v["containers"] or v["images"] for v in inventory.values()):
@@ -332,24 +363,19 @@ class Controller:
         log("Both engines have zero containers and images; workspace removed")
 
     def mount_workspace(self):
+        self.workspace_volume()  # refuse an unmanaged existing volume first
         self.docker("host", "volume", "create", "--label", "io.ci-runner.managed=ucsl", self.volume)
-        volume = json.loads(self.docker("host", "volume", "inspect", self.volume).stdout)[0]
-        if volume.get("Driver") != "local" or volume.get("Options"):
-            raise Error("Workspace must be an ordinary host-managed local Docker volume")
-        if (volume.get("Labels") or {}).get("io.ci-runner.managed") != "ucsl":
-            raise Error("Refusing to adopt an unmanaged workspace volume")
-        source = pathlib.Path(volume["Mountpoint"])
+        volume = self.workspace_volume()
+        if not volume:
+            raise Error("Managed workspace volume disappeared")
         # Only the trusted system daemon chooses this source; the job daemon
         # cannot trick this root process into chowning or mounting host files.
-        if source.resolve() != source or not source.is_dir():
-            raise Error("Workspace volume has an unsafe mountpoint")
+        source = self.check_workspace_mount(volume)
         if not self.mounted():
             if any(self.workspace.iterdir()):
                 raise Error("Refusing to hide existing files under the workspace mount")
             self.command("/usr/bin/mount", "--bind", str(source), str(self.workspace))
-        current = self.workspace.stat()
-        if current.st_dev != source.stat().st_dev or current.st_ino != source.stat().st_ino:
-            raise Error("A different filesystem is mounted at the workspace path")
+        self.check_workspace_mount(volume)
         os.chown(self.workspace, self.uid, self.uid)
         os.chmod(self.workspace, 0o700)
 
@@ -482,10 +508,16 @@ def main():
         controller = Controller(json.loads(args.config.read_text()))
         with (controller.root / "controller.lock").open("a") as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # A scheduled refresh must wait, not silently miss its one
+                # daily run when a minute recovery check holds the lock.
+                flags = fcntl.LOCK_EX
+                if args.action in ("recover", "status") or args.dry_run:
+                    flags |= fcntl.LOCK_NB
+                fcntl.flock(lock, flags)
             except BlockingIOError:
                 log("Another lifecycle operation is already running")
                 return 0
+            controller.load_state()
             controller.execute(args.action, args.dry_run)
         return 0
     except (Error, OSError, KeyError, ValueError) as exc:
