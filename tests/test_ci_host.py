@@ -128,6 +128,25 @@ class Lifecycle(unittest.TestCase):
             self.c.start()
         self.c.launch.assert_not_called()
 
+    def test_lost_registration_recreates_container_after_drain(self):
+        self.c.container = Mock(return_value={"State": {"Running": False}})
+        self.c.runner = Mock(return_value=None)
+        self.c.refresh, self.c.docker = Mock(), Mock()
+        self.c.start()
+        self.c.refresh.assert_called_once()
+        self.c.docker.assert_not_called()
+        self.assertEqual(self.c.state["target"], OLD)
+
+    def test_stale_rootless_socket_recreates_instead_of_restarting_forever(self):
+        self.c.container = Mock(return_value={"State": {"Running": True}})
+        self.c.runner = Mock(return_value=self.runner())
+        self.c.mount_workspace = Mock()
+        self.c.wait_online = Mock(side_effect=host.Error("stale socket"))
+        self.c.refresh = Mock()
+        self.c.start()
+        self.c.refresh.assert_called_once()
+        self.assertEqual(self.c.state["target"], OLD)
+
     def test_launch_only_passes_registration_token_and_rootless_socket(self):
         self.c.api = Mock(return_value={"token": "short-lived"})
         self.c.docker, self.c.mount_workspace, self.c.wait_online = Mock(), Mock(), Mock()

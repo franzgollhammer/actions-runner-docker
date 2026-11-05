@@ -428,10 +428,21 @@ class Controller:
             return
         container = self.container()
         if container:
-            self.mount_workspace()
-            if not container["State"]["Running"]:
-                self.docker("host", "start", self.name)
-            self.wait_online()
+            try:
+                if not self.runner():
+                    raise Error("Existing container lost its GitHub registration")
+                self.mount_workspace()
+                if not container["State"]["Running"]:
+                    self.docker("host", "start", self.name)
+                self.wait_online()
+            except Error:
+                # A daemon restart replaces its socket inode. Restarting the
+                # same outer container can retain the stale bind mount; a
+                # removed GitHub registration likewise cannot be reused.
+                # Drain before replacing it, and reuse the known-good digest.
+                self.save(target=self.state.get("image"), previous=self.state.get("image"))
+                self.refresh()
+                return
             self.save(phase="active", next_retry=0, error=None)
             return
         # Bootstrap must not accidentally run alongside the old dotagents set.
